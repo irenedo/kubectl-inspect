@@ -1,0 +1,462 @@
+package explain
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func readFixture(t *testing.T, name string) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("testdata", name))
+	if err != nil {
+		t.Fatalf("failed to read fixture %s: %v", name, err)
+	}
+	return string(data)
+}
+
+func TestParseHeader(t *testing.T) {
+	input := readFixture(t, "simple_recursive.txt")
+	lines := splitLines(input)
+	hdr, err := parseHeader(lines)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if hdr.kind != "ConfigMap" {
+		t.Errorf("kind: expected ConfigMap, got %q", hdr.kind)
+	}
+	if hdr.group != "" {
+		t.Errorf("group: expected empty, got %q", hdr.group)
+	}
+	if hdr.version != "v1" {
+		t.Errorf("version: expected v1, got %q", hdr.version)
+	}
+	if hdr.description == "" {
+		t.Error("description should not be empty")
+	}
+	if hdr.fieldsIdx == 0 {
+		t.Error("fieldsIdx should be > 0")
+	}
+}
+
+func TestParseHeader_WithGroup(t *testing.T) {
+	input := readFixture(t, "deployment_recursive.txt")
+	lines := splitLines(input)
+	hdr, err := parseHeader(lines)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if hdr.kind != "Deployment" {
+		t.Errorf("kind: expected Deployment, got %q", hdr.kind)
+	}
+	if hdr.group != "apps" {
+		t.Errorf("group: expected apps, got %q", hdr.group)
+	}
+	if hdr.version != "v1" {
+		t.Errorf("version: expected v1, got %q", hdr.version)
+	}
+	if hdr.fieldsIdx == 0 {
+		t.Error("fieldsIdx should be > 0")
+	}
+}
+
+func TestParseFieldLine_Simple(t *testing.T) {
+	name, typeStr, spaces, err := parseFieldLine("  image\t<string>")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if name != "image" {
+		t.Errorf("name: expected image, got %q", name)
+	}
+	if typeStr != "string" {
+		t.Errorf("typeStr: expected string, got %q", typeStr)
+	}
+	if spaces != 2 {
+		t.Errorf("spaces: expected 2, got %d", spaces)
+	}
+}
+
+func TestParseFieldLine_NestedType(t *testing.T) {
+	name, typeStr, spaces, err := parseFieldLine("      matchLabels\t<map[string]string>")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if name != "matchLabels" {
+		t.Errorf("name: expected matchLabels, got %q", name)
+	}
+	if typeStr != "map[string]string" {
+		t.Errorf("typeStr: expected map[string]string, got %q", typeStr)
+	}
+	if spaces != 6 {
+		t.Errorf("spaces: expected 6, got %d", spaces)
+	}
+}
+
+func TestParseFieldLine_Required(t *testing.T) {
+	name, typeStr, _, err := parseFieldLine("    selector\t<LabelSelector> -required-")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if name != "selector" {
+		t.Errorf("name: expected selector, got %q", name)
+	}
+	if typeStr != "LabelSelector" {
+		t.Errorf("typeStr: expected LabelSelector, got %q", typeStr)
+	}
+}
+
+func TestParseFieldLine_EnumLine(t *testing.T) {
+	_, _, _, err := parseFieldLine("      enum: Recreate, RollingUpdate")
+	if err == nil {
+		t.Error("expected error for enum metadata line (no tab separator)")
+	}
+}
+
+func TestParseFieldLine_Empty(t *testing.T) {
+	_, _, _, err := parseFieldLine("   ")
+	if err == nil {
+		t.Error("expected error for empty line")
+	}
+}
+
+func TestClassifyType(t *testing.T) {
+	tests := []struct {
+		typeStr  string
+		expected FieldType
+	}{
+		{"string", FieldTypeScalar},
+		{"integer", FieldTypeScalar},
+		{"boolean", FieldTypeScalar},
+		{"IntOrString", FieldTypeScalar},
+		{"Object", FieldTypeObject},
+		{"[]Object", FieldTypeList},
+		{"[]string", FieldTypeScalar},
+		{"[]integer", FieldTypeScalar},
+		{"map[string]string", FieldTypeMap},
+		{"map[string]Quantity", FieldTypeMap},
+		// Named types — initially classified as Object, postClassify fixes them
+		{"ObjectMeta", FieldTypeObject},
+		{"DeploymentSpec", FieldTypeObject},
+		{"[]LabelSelectorRequirement", FieldTypeList},
+		{"[]Container", FieldTypeList},
+	}
+	for _, tt := range tests {
+		t.Run(tt.typeStr, func(t *testing.T) {
+			got := classifyType(tt.typeStr)
+			if got != tt.expected {
+				t.Errorf("classifyType(%q): expected %d, got %d", tt.typeStr, tt.expected, got)
+			}
+		})
+	}
+}
+
+func TestBuildTree_Simple(t *testing.T) {
+	input := readFixture(t, "simple_recursive.txt")
+	info, err := ParseRecursive(input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(info.Fields) == 0 {
+		t.Fatal("expected fields, got none")
+	}
+
+	// Check apiVersion is a root scalar
+	found := findNode(info.Fields, "apiVersion")
+	if found == nil {
+		t.Fatal("apiVersion not found")
+	}
+	if found.FieldType != FieldTypeScalar {
+		t.Errorf("apiVersion should be scalar, got %d", found.FieldType)
+	}
+	if found.Path != "apiVersion" {
+		t.Errorf("apiVersion path: expected apiVersion, got %q", found.Path)
+	}
+
+	// Check metadata is an Object with children
+	metadata := findNode(info.Fields, "metadata")
+	if metadata == nil {
+		t.Fatal("metadata not found")
+	}
+	if !metadata.IsExpandable() {
+		t.Errorf("metadata should be expandable, got FieldType %d", metadata.FieldType)
+	}
+	if len(metadata.Children) == 0 {
+		t.Error("metadata should have children")
+	}
+
+	// Check nested field
+	annotations := findNode(metadata.Children, "annotations")
+	if annotations == nil {
+		t.Fatal("metadata.annotations not found")
+	}
+	if annotations.Path != "metadata.annotations" {
+		t.Errorf("annotations path: expected metadata.annotations, got %q", annotations.Path)
+	}
+}
+
+func TestBuildTree_Deployment(t *testing.T) {
+	input := readFixture(t, "deployment_recursive.txt")
+	info, err := ParseRecursive(input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if info.Kind != "Deployment" {
+		t.Errorf("kind: expected Deployment, got %q", info.Kind)
+	}
+	if info.APIVersion() != "apps/v1" {
+		t.Errorf("apiVersion: expected apps/v1, got %q", info.APIVersion())
+	}
+
+	// Check spec exists and has children
+	spec := findNode(info.Fields, "spec")
+	if spec == nil {
+		t.Fatal("spec not found")
+	}
+	if !spec.IsExpandable() {
+		t.Errorf("spec should be expandable, got FieldType %d", spec.FieldType)
+	}
+	if len(spec.Children) == 0 {
+		t.Error("spec should have children")
+	}
+
+	// Check spec.replicas is scalar
+	replicas := findNode(spec.Children, "replicas")
+	if replicas == nil {
+		t.Fatal("spec.replicas not found")
+	}
+	if replicas.FieldType != FieldTypeScalar {
+		t.Errorf("replicas should be scalar, got %d", replicas.FieldType)
+	}
+	if replicas.Path != "spec.replicas" {
+		t.Errorf("replicas path: expected spec.replicas, got %q", replicas.Path)
+	}
+
+	// Check deeply nested path: spec.selector.matchExpressions
+	selector := findNode(spec.Children, "selector")
+	if selector == nil {
+		t.Fatal("spec.selector not found")
+	}
+	if !selector.IsExpandable() {
+		t.Errorf("selector should be expandable, got FieldType %d", selector.FieldType)
+	}
+	matchExpr := findNode(selector.Children, "matchExpressions")
+	if matchExpr == nil {
+		t.Fatal("spec.selector.matchExpressions not found")
+	}
+	if matchExpr.FieldType != FieldTypeList {
+		t.Errorf("matchExpressions should be List, got %d", matchExpr.FieldType)
+	}
+	if matchExpr.Path != "spec.selector.matchExpressions" {
+		t.Errorf("path: expected spec.selector.matchExpressions, got %q", matchExpr.Path)
+	}
+
+	// Check containers is a list with children
+	template := findNode(spec.Children, "template")
+	if template == nil {
+		t.Fatal("spec.template not found")
+	}
+	podSpec := findNode(template.Children, "spec")
+	if podSpec == nil {
+		t.Fatal("spec.template.spec not found")
+	}
+	containers := findNode(podSpec.Children, "containers")
+	if containers == nil {
+		t.Fatal("spec.template.spec.containers not found")
+	}
+	if !containers.IsExpandable() {
+		t.Errorf("containers should be expandable, got FieldType %d", containers.FieldType)
+	}
+	if len(containers.Children) == 0 {
+		t.Error("containers should have children")
+	}
+
+	// Check status exists
+	status := findNode(info.Fields, "status")
+	if status == nil {
+		t.Fatal("status not found")
+	}
+	if len(status.Children) == 0 {
+		t.Error("status should have children")
+	}
+}
+
+func TestBuildTree_CRD(t *testing.T) {
+	input := readFixture(t, "crd_recursive.txt")
+	info, err := ParseRecursive(input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if info.Kind != "Certificate" {
+		t.Errorf("kind: expected Certificate, got %q", info.Kind)
+	}
+
+	// Check spec.issuerRef.name exists
+	spec := findNode(info.Fields, "spec")
+	if spec == nil {
+		t.Fatal("spec not found")
+	}
+	issuerRef := findNode(spec.Children, "issuerRef")
+	if issuerRef == nil {
+		t.Fatal("spec.issuerRef not found")
+	}
+	nameField := findNode(issuerRef.Children, "name")
+	if nameField == nil {
+		t.Fatal("spec.issuerRef.name not found")
+	}
+	if nameField.Path != "spec.issuerRef.name" {
+		t.Errorf("path: expected spec.issuerRef.name, got %q", nameField.Path)
+	}
+}
+
+func TestBuildTree_RealOutput(t *testing.T) {
+	input := readFixture(t, "deployment_recursive.txt")
+	info, err := ParseRecursive(input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify named types like ObjectMeta are expandable
+	metadata := findNode(info.Fields, "metadata")
+	if metadata == nil {
+		t.Fatal("metadata not found")
+	}
+	if metadata.TypeStr != "ObjectMeta" {
+		t.Errorf("metadata type: expected ObjectMeta, got %q", metadata.TypeStr)
+	}
+	if !metadata.IsExpandable() {
+		t.Error("metadata (ObjectMeta) should be expandable because it has children")
+	}
+
+	// Verify -required- is stripped
+	spec := findNode(info.Fields, "spec")
+	if spec == nil {
+		t.Fatal("spec not found")
+	}
+	selector := findNode(spec.Children, "selector")
+	if selector == nil {
+		t.Fatal("selector not found")
+	}
+	if selector.TypeStr != "LabelSelector" {
+		t.Errorf("selector type: expected LabelSelector, got %q", selector.TypeStr)
+	}
+}
+
+func TestBuildTree_RealKubectlOutput(t *testing.T) {
+	input := readFixture(t, "real_deployment_recursive.txt")
+	info, err := ParseRecursive(input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if info.Kind != "Deployment" {
+		t.Errorf("kind: expected Deployment, got %q", info.Kind)
+	}
+
+	// spec must be expandable
+	spec := findNode(info.Fields, "spec")
+	if spec == nil {
+		t.Fatal("spec not found")
+	}
+	if !spec.IsExpandable() {
+		t.Errorf("spec should be expandable (type: %q, fieldType: %d)", spec.TypeStr, spec.FieldType)
+	}
+	if len(spec.Children) == 0 {
+		t.Fatal("spec should have children")
+	}
+
+	// metadata must be expandable (type is ObjectMeta, not Object)
+	metadata := findNode(info.Fields, "metadata")
+	if metadata == nil {
+		t.Fatal("metadata not found")
+	}
+	if !metadata.IsExpandable() {
+		t.Errorf("metadata should be expandable (type: %q, fieldType: %d)", metadata.TypeStr, metadata.FieldType)
+	}
+
+	// Deep path: spec.template.spec.containers must be expandable
+	template := findNode(spec.Children, "template")
+	if template == nil {
+		t.Fatal("spec.template not found")
+	}
+	podSpec := findNode(template.Children, "spec")
+	if podSpec == nil {
+		t.Fatal("spec.template.spec not found")
+	}
+	containers := findNode(podSpec.Children, "containers")
+	if containers == nil {
+		t.Fatal("spec.template.spec.containers not found")
+	}
+	if !containers.IsExpandable() {
+		t.Errorf("containers should be expandable (type: %q, fieldType: %d)", containers.TypeStr, containers.FieldType)
+	}
+	if len(containers.Children) == 0 {
+		t.Error("containers should have children")
+	}
+
+	// Total root fields should be reasonable
+	if len(info.Fields) < 3 {
+		t.Errorf("expected at least 3 root fields, got %d", len(info.Fields))
+	}
+}
+
+func TestParseRecursive_ErrorOutput(t *testing.T) {
+	input := readFixture(t, "error_output.txt")
+	_, err := ParseRecursive(input)
+	if err == nil {
+		t.Error("expected error for error output")
+	}
+}
+
+func TestParseRecursive_EmptyInput(t *testing.T) {
+	_, err := ParseRecursive("")
+	if err == nil {
+		t.Error("expected error for empty input")
+	}
+}
+
+func TestDetectIndentUnit(t *testing.T) {
+	// 2-space indent
+	lines2 := []string{"  apiVersion\t<string>", "  metadata\t<ObjectMeta>", "    name\t<string>"}
+	if u := detectIndentUnit(lines2); u != 2 {
+		t.Errorf("expected indent unit 2, got %d", u)
+	}
+
+	// 3-space indent
+	lines3 := []string{"   apiVersion\t<string>", "   metadata\t<Object>", "      name\t<string>"}
+	if u := detectIndentUnit(lines3); u != 3 {
+		t.Errorf("expected indent unit 3, got %d", u)
+	}
+}
+
+// helpers
+
+func findNode(nodes []*Node, name string) *Node {
+	for _, n := range nodes {
+		if n.Name == name {
+			return n
+		}
+	}
+	return nil
+}
+
+func splitLines(s string) []string {
+	return splitByNewline(s)
+}
+
+func splitByNewline(s string) []string {
+	result := make([]string, 0)
+	start := 0
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\n' {
+			result = append(result, s[start:i])
+			start = i + 1
+		}
+	}
+	if start < len(s) {
+		result = append(result, s[start:])
+	}
+	return result
+}

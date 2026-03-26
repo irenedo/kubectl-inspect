@@ -1,0 +1,48 @@
+GROUP:      cert-manager.io
+KIND:       Certificate
+VERSION:    v1
+
+DESCRIPTION:
+     A Certificate resource should be created to ensure an up to date and signed
+     X.509 certificate is stored in the Kubernetes Secret resource named in
+     `spec.secretName`.
+
+FIELDS:
+  apiVersion	<string>
+  kind	<string>
+  metadata	<ObjectMeta>
+    annotations	<map[string]string>
+    name	<string>
+    namespace	<string>
+  spec	<Object>
+    commonName	<string>
+    dnsNames	<[]string>
+    duration	<string>
+    ipAddresses	<[]string>
+    isCA	<boolean>
+    issuerRef	<Object>
+      group	<string>
+      kind	<string>
+      name	<string>
+    privateKey	<Object>
+      algorithm	<string>
+      encoding	<string>
+      rotationPolicy	<string>
+      size	<integer>
+    renewBefore	<string>
+    secretName	<string>
+    subject	<Object>
+      countries	<[]string>
+      organizations	<[]string>
+      organizationalUnits	<[]string>
+    usages	<[]string>
+  status	<Object>
+    conditions	<[]Object>
+      lastTransitionTime	<string>
+      message	<string>
+      reason	<string>
+      status	<string>
+      type	<string>
+    notAfter	<string>
+    notBefore	<string>
+    renewalTime	<string>

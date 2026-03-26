@@ -1,0 +1,69 @@
+GROUP:      apps
+KIND:       Deployment
+VERSION:    v1
+
+DESCRIPTION:
+    Deployment enables declarative updates for Pods and ReplicaSets.
+
+FIELDS:
+  apiVersion	<string>
+  kind	<string>
+  metadata	<ObjectMeta>
+    annotations	<map[string]string>
+    creationTimestamp	<string>
+    labels	<map[string]string>
+    name	<string>
+    namespace	<string>
+  spec	<DeploymentSpec>
+    minReadySeconds	<integer>
+    paused	<boolean>
+    replicas	<integer>
+    revisionHistoryLimit	<integer>
+    selector	<LabelSelector> -required-
+      matchExpressions	<[]LabelSelectorRequirement>
+        key	<string> -required-
+        operator	<string> -required-
+        values	<[]string>
+      matchLabels	<map[string]string>
+    strategy	<DeploymentStrategy>
+      rollingUpdate	<RollingUpdateDeployment>
+        maxSurge	<IntOrString>
+        maxUnavailable	<IntOrString>
+      type	<string>
+    template	<PodTemplateSpec> -required-
+      metadata	<ObjectMeta>
+        annotations	<map[string]string>
+        labels	<map[string]string>
+      spec	<PodSpec>
+        containers	<[]Container> -required-
+          args	<[]string>
+          command	<[]string>
+          env	<[]EnvVar>
+            name	<string> -required-
+            value	<string>
+          image	<string>
+          imagePullPolicy	<string>
+          name	<string> -required-
+          ports	<[]ContainerPort>
+            containerPort	<integer> -required-
+            name	<string>
+            protocol	<string>
+          resources	<ResourceRequirements>
+            limits	<map[string]Quantity>
+            requests	<map[string]Quantity>
+        nodeSelector	<map[string]string>
+        restartPolicy	<string>
+        serviceAccountName	<string>
+  status	<DeploymentStatus>
+    availableReplicas	<integer>
+    conditions	<[]DeploymentCondition>
+      lastTransitionTime	<string>
+      lastUpdateTime	<string>
+      message	<string>
+      reason	<string>
+      status	<string> -required-
+      type	<string> -required-
+    observedGeneration	<integer>
+    readyReplicas	<integer>
+    replicas	<integer>
+    updatedReplicas	<integer>

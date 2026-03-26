@@ -1,0 +1,53 @@
+version: '3'
+
+vars:
+  BINARY: kubectl-inspect
+  GOLANGCI_LINT_VERSION: 2.11.4
+
+tasks:
+  build:
+    desc: Build the binary
+    cmds:
+      - go build -o {{.BINARY}} .
+
+  test:
+    desc: Run all tests
+    cmds:
+      - go test ./... -v
+
+  test-cover:
+    desc: Run tests with coverage
+    cmds:
+      - go test ./... -coverprofile=coverage.out
+      - go tool cover -html=coverage.out -o coverage.html
+
+  install:
+    desc: Build and install to GOPATH/bin
+    cmds:
+      - go build -o {{.BINARY}} .
+      - mv {{.BINARY}} $(go env GOPATH)/bin/
+
+  clean:
+    desc: Remove build artifacts
+    cmds:
+      - rm -f {{.BINARY}} coverage.out coverage.html
+
+  lint:install:
+    desc: Install golangci-lint
+    status:
+      - ./bin/golangci-lint version 2>&1 | grep -q '{{.GOLANGCI_LINT_VERSION}}'
+    cmds:
+      - GOBIN={{.ROOT_DIR}}/bin go install github.com/golangci/golangci-lint/cmd/golangci-lint@v{{.GOLANGCI_LINT_VERSION}}
+
+  lint:
+    desc: Run golangci-lint with all configured linters
+    deps:
+      - lint:install
+    cmds:
+      - ./bin/golangci-lint run ./...
+
+  check:
+    desc: Run all checks before publishing (lint, test)
+    cmds:
+      - task: lint
+      - task: test

@@ -1,0 +1,138 @@
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    # Bug detection
+    - bodyclose
+    - durationcheck
+    - nilerr
+    - noctx
+    - rowserrcheck
+    - sqlclosecheck
+
+    # Style and consistency
+    - misspell
+    - unconvert
+    - unparam
+    - whitespace
+
+    # Code quality
+    - copyloopvar
+    - errname
+    - errorlint
+    - goconst
+    - gocritic
+    - gosec
+    - prealloc
+    - revive
+    - tparallel
+    - wastedassign
+
+    # Complexity
+    - cyclop
+    - gocognit
+    - gocyclo
+    - nestif
+
+  settings:
+    cyclop:
+      max-complexity: 15
+
+    gocognit:
+      min-complexity: 20
+
+    gocyclo:
+      min-complexity: 15
+
+    nestif:
+      min-complexity: 5
+
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - style
+        - performance
+      disabled-checks:
+        - hugeParam
+        - commentedOutCode
+
+    revive:
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: dot-imports
+        - name: error-return
+        - name: error-strings
+        - name: error-naming
+        - name: exported
+        - name: increment-decrement
+        - name: var-naming
+        - name: range
+        - name: receiver-naming
+        - name: indent-error-flow
+        - name: superfluous-else
+        - name: unreachable-code
+        - name: unused-parameter
+          arguments:
+            - allowRegex: "^_"
+
+    gosec:
+      excludes:
+        - G204 # We intentionally exec kubectl
+        - G304 # Reading test fixtures via variable path is fine
+
+    misspell:
+      locale: US
+
+  exclusions:
+    presets: []
+    rules:
+      # Suppress noctx for kubectl exec (no context available without API change)
+      - linters:
+          - noctx
+        path: pkg/kubectl/exec\.go
+
+      # Suppress goconst in test files (test strings don't need constants)
+      - linters:
+          - goconst
+        path: _test\.go
+
+      # Suppress unused-parameter in test files (mock methods / framework callbacks)
+      - linters:
+          - revive
+        path: _test\.go
+        text: "unused-parameter"
+
+      # Suppress unparam in test files (test helpers)
+      - linters:
+          - unparam
+        path: _test\.go
+
+      # Suppress gocognit in test files (test functions can be long)
+      - linters:
+          - gocognit
+        path: _test\.go
+
+      # Suppress gocyclo in test files (test functions can be long)
+      - linters:
+          - gocyclo
+        path: _test\.go
+
+      # Suppress cyclop in test files (test functions can be long)
+      - linters:
+          - cyclop
+        path: _test\.go
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
