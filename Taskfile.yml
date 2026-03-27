@@ -3,8 +3,15 @@ version: '3'
 vars:
   BINARY: kubectl-inspect
   GOLANGCI_LINT_VERSION: 2.11.4
+  TRIVY_VERSION: 0.61.0
 
 tasks:
+  default:
+    desc: Run all checks and build the binary
+    cmds:
+      - task: check
+      - task: build
+
   build:
     desc: Build the binary
     cmds:
@@ -46,8 +53,23 @@ tasks:
     cmds:
       - ./bin/golangci-lint run ./...
 
+  trivy:install:
+    desc: Install trivy
+    status:
+      - ./bin/trivy version 2>&1 | grep -q '{{.TRIVY_VERSION}}'
+    cmds:
+      - GOBIN={{.ROOT_DIR}}/bin go install github.com/aquasecurity/trivy/cmd/trivy@v{{.TRIVY_VERSION}}
+
+  trivy:
+    desc: Check for vulnerabilities in dependencies
+    deps:
+      - trivy:install
+    cmds:
+      - ./bin/trivy fs go.mod
+
   check:
-    desc: Run all checks before publishing (lint, test)
+    desc: Run all checks before publishing (lint, test, trivy)
     cmds:
       - task: lint
       - task: test
+      - task: trivy
