@@ -7,6 +7,11 @@ import (
 )
 
 // Update handles messages and returns the updated model and any commands.
+//
+// Bubble Tea uses value receivers for Update/View (the Elm Architecture).
+// Helper methods that mutate (rebuildVisible, clampCursor, ensureCursorVisible,
+// prepareFetchDetail) use pointer receivers and operate on the local copy
+// that will be returned. This is intentional.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:

@@ -1,14 +1,18 @@
 package explain
 
 import (
+	"context"
+
 	"github.com/irenedo/kubectl-inspect/pkg/kubectl"
 )
 
 // Fetcher runs kubectl explain for individual field paths.
+// It caches results by field path so revisiting a node is instant.
 type Fetcher struct {
 	executor kubectl.Executor
 	resource string
 	flags    kubectl.Flags
+	cache    map[string]DetailResult
 }
 
 // NewFetcher creates a new Fetcher.
@@ -17,12 +21,17 @@ func NewFetcher(executor kubectl.Executor, resource string, flags kubectl.Flags)
 		executor: executor,
 		resource: resource,
 		flags:    flags,
+		cache:    make(map[string]DetailResult),
 	}
 }
 
 // FetchDetail fetches the explain output for a specific field path.
-// No caching — always fetches fresh from the API server.
-func (f *Fetcher) FetchDetail(fieldPath string) DetailResult {
+// Results are cached for the lifetime of the Fetcher.
+func (f *Fetcher) FetchDetail(ctx context.Context, fieldPath string) DetailResult {
+	if cached, ok := f.cache[fieldPath]; ok {
+		return cached
+	}
+
 	var fullPath string
 	if fieldPath == "" {
 		fullPath = f.resource
@@ -30,9 +39,11 @@ func (f *Fetcher) FetchDetail(fieldPath string) DetailResult {
 		fullPath = f.resource + "." + fieldPath
 	}
 
-	output, err := f.executor.ExplainField(fullPath, f.flags)
-	return DetailResult{
+	output, err := f.executor.ExplainField(ctx, fullPath, f.flags)
+	result := DetailResult{
 		RawOutput: output,
 		Err:       err,
 	}
+	f.cache[fieldPath] = result
+	return result
 }

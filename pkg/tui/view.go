@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
+
 	"github.com/irenedo/kubectl-inspect/pkg/kubectl"
 )
 
@@ -164,9 +166,9 @@ func (m Model) renderSeparator(height int) string {
 }
 
 func truncateOrPad(s string, width int) string {
-	visible := len(s)
+	visible := runewidth.StringWidth(s)
 	if visible > width {
-		return s[:width]
+		return runewidth.Truncate(s, width, "")
 	}
 	return s + strings.Repeat(" ", width-visible)
 }

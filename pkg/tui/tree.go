@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
+
 	"github.com/irenedo/kubectl-inspect/pkg/explain"
 )
 
@@ -58,8 +60,8 @@ func CollapseNode(node *explain.Node) {
 	}
 }
 
-// ToggleExpand toggles expand/collapse on a branch node. No-op on leaf nodes.
-func ToggleExpand(node *explain.Node) {
+// toggleExpand toggles expand/collapse on a branch node. No-op on leaf nodes.
+func toggleExpand(node *explain.Node) {
 	if node.IsExpandable() {
 		node.Expanded = !node.Expanded
 	}
@@ -125,10 +127,11 @@ func FormatTreeLine(node *explain.Node, isSelected bool, width int) string {
 	if isSelected {
 		// For selected: use plain text (no per-element colors) so the highlight is clean
 		label := NodeLabel(node)
-		if len(label) > width {
-			label = label[:width]
+		w := runewidth.StringWidth(label)
+		if w > width {
+			label = runewidth.Truncate(label, width, "")
 		} else {
-			label += strings.Repeat(" ", width-len(label))
+			label += strings.Repeat(" ", width-w)
 		}
 		return selectedStyle.Render(label)
 	}
@@ -136,9 +139,10 @@ func FormatTreeLine(node *explain.Node, isSelected bool, width int) string {
 	// For non-selected: use colored label
 	colored := coloredNodeLabel(node)
 	plain := NodeLabel(node)
-	// Pad based on plain-text length (colored has escape codes)
-	if len(plain) < width {
-		colored += strings.Repeat(" ", width-len(plain))
+	// Pad based on plain-text display width (colored has escape codes)
+	plainWidth := runewidth.StringWidth(plain)
+	if plainWidth < width {
+		colored += strings.Repeat(" ", width-plainWidth)
 	}
 	return colored
 }

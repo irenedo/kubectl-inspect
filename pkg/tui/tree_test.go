@@ -96,7 +96,7 @@ func TestVisibleNodes_CollapseHidesDescendants(t *testing.T) {
 
 func TestToggleExpand_Scalar(t *testing.T) {
 	node := &explain.Node{Name: "replicas", TypeStr: "integer", FieldType: explain.FieldTypeScalar}
-	ToggleExpand(node)
+	toggleExpand(node)
 	if node.Expanded {
 		t.Error("scalar node should not be expandable")
 	}
@@ -104,11 +104,11 @@ func TestToggleExpand_Scalar(t *testing.T) {
 
 func TestToggleExpand_Object(t *testing.T) {
 	node := &explain.Node{Name: "spec", TypeStr: "Object", FieldType: explain.FieldTypeObject}
-	ToggleExpand(node)
+	toggleExpand(node)
 	if !node.Expanded {
 		t.Error("expected node to be expanded after toggle")
 	}
-	ToggleExpand(node)
+	toggleExpand(node)
 	if node.Expanded {
 		t.Error("expected node to be collapsed after second toggle")
 	}
