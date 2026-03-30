@@ -1,6 +1,7 @@
 package kubectl
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os/exec"
@@ -16,8 +17,8 @@ type Flags struct {
 
 // Executor defines the interface for running kubectl explain commands.
 type Executor interface {
-	ExplainRecursive(resource string, flags Flags) (string, error)
-	ExplainField(fieldPath string, flags Flags) (string, error)
+	ExplainRecursive(ctx context.Context, resource string, flags Flags) (string, error)
+	ExplainField(ctx context.Context, fieldPath string, flags Flags) (string, error)
 }
 
 // NotFoundError indicates kubectl is not in PATH.
@@ -68,16 +69,16 @@ func NewRealExecutor() *RealExecutor {
 }
 
 // ExplainRecursive runs kubectl explain with --recursive for the given resource.
-func (r *RealExecutor) ExplainRecursive(resource string, flags Flags) (string, error) {
+func (r *RealExecutor) ExplainRecursive(ctx context.Context, resource string, flags Flags) (string, error) {
 	args := buildArgs(resource, flags)
 	args = append(args, "--recursive")
-	return run(args)
+	return run(ctx, args)
 }
 
 // ExplainField runs kubectl explain for a specific field path.
-func (r *RealExecutor) ExplainField(fieldPath string, flags Flags) (string, error) {
+func (r *RealExecutor) ExplainField(ctx context.Context, fieldPath string, flags Flags) (string, error) {
 	args := buildArgs(fieldPath, flags)
-	return run(args)
+	return run(ctx, args)
 }
 
 func buildArgs(resource string, flags Flags) []string {
@@ -94,13 +95,13 @@ func buildArgs(resource string, flags Flags) []string {
 	return args
 }
 
-func run(args []string) (string, error) {
+func run(ctx context.Context, args []string) (string, error) {
 	kubectlPath, err := exec.LookPath("kubectl")
 	if err != nil {
 		return "", &NotFoundError{Err: err}
 	}
 
-	cmd := exec.Command(kubectlPath, args...) //nolint:gosec // args are constructed internally
+	cmd := exec.CommandContext(ctx, kubectlPath, args...) //nolint:gosec // args are constructed internally
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		var exitErr *exec.ExitError

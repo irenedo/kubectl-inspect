@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
 )
 
 var (
@@ -100,7 +101,10 @@ func colorizeDetail(text string, width int) []string {
 			result = append(result, "   "+detailDescStyle.Render(trimmed))
 
 		case inDescription && trimmed != "":
-			wrapped := wrapLines("   "+detailDescStyle.Render(trimmed), width)
+			wrapped := wrapLines("   "+trimmed, width)
+			for i, w := range wrapped {
+				wrapped[i] = detailDescStyle.Render(w)
+			}
 			result = append(result, wrapped...)
 
 		case trimmed == "":
@@ -119,7 +123,7 @@ func centerText(text string, width, height int) string {
 	midRow := height / 2
 	for i := range lines {
 		if i == midRow {
-			pad := (width - len(text)) / 2
+			pad := (width - runewidth.StringWidth(text)) / 2
 			if pad < 0 {
 				pad = 0
 			}

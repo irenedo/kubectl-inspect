@@ -2,6 +2,7 @@ package explain
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -298,14 +299,7 @@ func detectIndentUnit(lines []string) int {
 		return 2 // default
 	}
 
-	// Sort
-	for i := 0; i < len(vals); i++ {
-		for j := i + 1; j < len(vals); j++ {
-			if vals[j] < vals[i] {
-				vals[i], vals[j] = vals[j], vals[i]
-			}
-		}
-	}
+	slices.Sort(vals)
 
 	minDiff := vals[1] - vals[0]
 	for i := 2; i < len(vals); i++ {

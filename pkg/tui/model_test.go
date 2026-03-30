@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -20,11 +21,11 @@ type testExecutor struct {
 	lastFieldPath   string
 }
 
-func (t *testExecutor) ExplainRecursive(_ string, _ kubectl.Flags) (string, error) {
+func (t *testExecutor) ExplainRecursive(_ context.Context, _ string, _ kubectl.Flags) (string, error) {
 	return t.recursiveOutput, t.recursiveErr
 }
 
-func (t *testExecutor) ExplainField(fieldPath string, _ kubectl.Flags) (string, error) {
+func (t *testExecutor) ExplainField(_ context.Context, fieldPath string, _ kubectl.Flags) (string, error) {
 	t.lastFieldPath = fieldPath
 	return t.fieldOutput, t.fieldErr
 }
@@ -675,5 +676,84 @@ func TestClampCursor(t *testing.T) {
 	m.clampCursor()
 	if m.cursor != 0 {
 		t.Errorf("expected cursor clamped to 0, got %d", m.cursor)
+	}
+}
+
+func TestUpdate_EscOnScalarGrandchild_CollapsesParent(t *testing.T) {
+	m, _ := newTestModel(t)
+	m = loadTree(t, m)
+
+	if !m.visibleNodes[0].IsExpandable() {
+		t.Skip("first node is not expandable")
+	}
+
+	// Expand root to reveal children
+	ExpandNode(m.visibleNodes[0])
+	m.rebuildVisible()
+
+	// Find an expandable child and expand it
+	childIdx := -1
+	for i, n := range m.visibleNodes {
+		if n.IsExpandable() && n.Depth == 1 && len(n.Children) > 0 {
+			childIdx = i
+			break
+		}
+	}
+	if childIdx < 0 {
+		t.Skip("no expandable child with children found")
+	}
+
+	ExpandNode(m.visibleNodes[childIdx])
+	m.rebuildVisible()
+
+	// Find a scalar grandchild (leaf node at depth 2)
+	leafIdx := -1
+	for i, n := range m.visibleNodes {
+		if !n.IsExpandable() && n.Depth == 2 {
+			leafIdx = i
+			break
+		}
+	}
+	if leafIdx < 0 {
+		t.Skip("no scalar grandchild found")
+	}
+
+	m.cursor = leafIdx
+	parentNode := m.visibleNodes[leafIdx].Parent
+
+	// Press Esc on the scalar grandchild — should collapse its parent
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEscape})
+	model := updated.(Model)
+
+	// Parent should be collapsed
+	if parentNode.Expanded {
+		t.Error("expected parent to be collapsed after Esc on grandchild")
+	}
+
+	// Cursor should be on the parent
+	if model.cursor >= len(model.visibleNodes) {
+		t.Fatal("cursor out of bounds")
+	}
+	if model.visibleNodes[model.cursor] != parentNode {
+		t.Errorf("expected cursor on parent %q, got %q", parentNode.Name, model.visibleNodes[model.cursor].Name)
+	}
+	if cmd == nil {
+		t.Error("expected a fetch detail command after collapsing parent")
+	}
+}
+
+func TestUpdate_TabOnEmptyVisibleNodes(t *testing.T) {
+	m, _ := newTestModel(t)
+	// Don't load the tree — visibleNodes is empty
+	m.visibleNodes = nil
+	m.cursor = 0
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model := updated.(Model)
+	if len(model.visibleNodes) != 0 {
+		t.Error("Tab on empty visible nodes should not change state")
+	}
+	if cmd != nil {
+		t.Error("Tab on empty visible nodes should not trigger a command")
 	}
 }

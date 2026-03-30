@@ -1,6 +1,7 @@
 package explain
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -16,11 +17,11 @@ type mockExecutor struct {
 	lastFlags       kubectl.Flags
 }
 
-func (m *mockExecutor) ExplainRecursive(_ string, _ kubectl.Flags) (string, error) {
+func (m *mockExecutor) ExplainRecursive(_ context.Context, _ string, _ kubectl.Flags) (string, error) {
 	return m.recursiveOutput, m.recursiveErr
 }
 
-func (m *mockExecutor) ExplainField(fieldPath string, flags kubectl.Flags) (string, error) {
+func (m *mockExecutor) ExplainField(_ context.Context, fieldPath string, flags kubectl.Flags) (string, error) {
 	m.lastFieldPath = fieldPath
 	m.lastFlags = flags
 	return m.fieldOutput, m.fieldErr
@@ -30,7 +31,7 @@ func TestFetchDetail_TopLevel(t *testing.T) {
 	mock := &mockExecutor{fieldOutput: "KIND: Deployment\n"}
 	fetcher := NewFetcher(mock, "deployment", kubectl.Flags{})
 
-	result := fetcher.FetchDetail("")
+	result := fetcher.FetchDetail(context.Background(), "")
 	if result.Err != nil {
 		t.Fatalf("unexpected error: %v", result.Err)
 	}
@@ -46,7 +47,7 @@ func TestFetchDetail_NestedPath(t *testing.T) {
 	mock := &mockExecutor{fieldOutput: "FIELD: containers\n"}
 	fetcher := NewFetcher(mock, "deployment", kubectl.Flags{})
 
-	result := fetcher.FetchDetail("spec.containers")
+	result := fetcher.FetchDetail(context.Background(), "spec.containers")
 	if result.Err != nil {
 		t.Fatalf("unexpected error: %v", result.Err)
 	}
@@ -62,7 +63,7 @@ func TestFetchDetail_Error(t *testing.T) {
 	mock := &mockExecutor{fieldErr: fmt.Errorf("connection refused")}
 	fetcher := NewFetcher(mock, "deployment", kubectl.Flags{})
 
-	result := fetcher.FetchDetail("spec")
+	result := fetcher.FetchDetail(context.Background(), "spec")
 	if result.Err == nil {
 		t.Error("expected error")
 	}
@@ -77,7 +78,7 @@ func TestFetchDetail_FlagsPassthrough(t *testing.T) {
 	}
 	fetcher := NewFetcher(mock, "deployment", flags)
 
-	fetcher.FetchDetail("spec")
+	fetcher.FetchDetail(context.Background(), "spec")
 	if mock.lastFlags.Kubeconfig != "/my/kubeconfig" {
 		t.Errorf("kubeconfig not passed through: %q", mock.lastFlags.Kubeconfig)
 	}

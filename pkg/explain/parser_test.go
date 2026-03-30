@@ -3,6 +3,7 @@ package explain
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -443,20 +444,5 @@ func findNode(nodes []*Node, name string) *Node {
 }
 
 func splitLines(s string) []string {
-	return splitByNewline(s)
-}
-
-func splitByNewline(s string) []string {
-	result := make([]string, 0)
-	start := 0
-	for i := 0; i < len(s); i++ {
-		if s[i] == '\n' {
-			result = append(result, s[start:i])
-			start = i + 1
-		}
-	}
-	if start < len(s) {
-		result = append(result, s[start:])
-	}
-	return result
+	return strings.Split(s, "\n")
 }

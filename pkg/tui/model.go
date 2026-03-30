@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"context"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/irenedo/kubectl-inspect/pkg/explain"
 	"github.com/irenedo/kubectl-inspect/pkg/kubectl"
@@ -66,7 +68,7 @@ func (m Model) Init() tea.Cmd {
 
 func (m Model) loadTreeCmd() tea.Cmd {
 	return func() tea.Msg {
-		output, err := m.executor.ExplainRecursive(m.resource, m.flags)
+		output, err := m.executor.ExplainRecursive(context.Background(), m.resource, m.flags)
 		if err != nil {
 			return errMsg{err: err}
 		}
@@ -85,7 +87,7 @@ func (m Model) fetchDetailCmd() tea.Cmd {
 	node := m.visibleNodes[m.cursor]
 	path := node.Path
 	return func() tea.Msg {
-		result := m.fetcher.FetchDetail(path)
+		result := m.fetcher.FetchDetail(context.Background(), path)
 		return detailLoadedMsg{path: path, result: result}
 	}
 }
