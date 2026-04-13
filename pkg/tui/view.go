@@ -114,8 +114,7 @@ func formatHelp() string {
 		desc string
 	}{
 		{"↑/↓", "navigate"},
-		{"Tab", "expand"},
-		{"Esc", "collapse"},
+		{"Tab", "expand/collapse"},
 		{"Enter", "copy path"},
 		{"PgUp/PgDn", "scroll detail"},
 		{"q/Q", "quit"},

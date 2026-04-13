@@ -67,9 +67,6 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "tab":
 		return m.handleTab()
 
-	case "esc":
-		return m.handleEsc()
-
 	case "enter":
 		return m.handleEnter()
 
@@ -115,44 +112,32 @@ func (m Model) handleTab() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	node := m.visibleNodes[m.cursor]
-	if !node.IsExpandable() || node.Expanded {
+	if !node.IsExpandable() {
+		if node.Parent != nil {
+			return m.collapseParent(node)
+		}
 		return m, nil
 	}
-	ExpandNode(node)
-	m.rebuildVisible()
-	// Move cursor to first child so user can immediately browse children
-	if len(node.Children) > 0 && m.cursor+1 < len(m.visibleNodes) {
-		m.cursor++
+	if node.Expanded {
+		CollapseNode(node)
+		m.rebuildVisible()
+		m.clampCursor()
 		m.ensureCursorVisible()
+	} else {
+		ExpandNode(node)
+		m.rebuildVisible()
+		if len(node.Children) > 0 && m.cursor+1 < len(m.visibleNodes) {
+			m.cursor++
+			m.ensureCursorVisible()
+		}
 	}
 	cmd := m.prepareFetchDetail()
 	return m, cmd
 }
 
-func (m Model) handleEsc() (tea.Model, tea.Cmd) {
-	if len(m.visibleNodes) == 0 || m.cursor >= len(m.visibleNodes) {
-		return m, nil
-	}
-	node := m.visibleNodes[m.cursor]
-	if node.IsExpandable() && node.Expanded {
-		CollapseNode(node)
-		m.rebuildVisible()
-		m.clampCursor()
-		m.ensureCursorVisible()
-		cmd := m.prepareFetchDetail()
-		return m, cmd
-	}
-	// If on a leaf or collapsed node, collapse the parent instead
-	if node.Parent != nil {
-		return m.collapseParent(node)
-	}
-	return m, nil
-}
-
 func (m Model) collapseParent(node *explain.Node) (tea.Model, tea.Cmd) {
 	CollapseNode(node.Parent)
 	m.rebuildVisible()
-	// Move cursor to the parent
 	for i, n := range m.visibleNodes {
 		if n == node.Parent {
 			m.cursor = i

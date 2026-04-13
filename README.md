@@ -71,7 +71,7 @@ Flags:
 │                               │   replicas  <integer>                             │
 │                               │   selector  <LabelSelector>                       │
 │                               │   ...                                             │
-│    ↑/↓ navigate • Tab expand • Esc collapse • Enter copy path • q/Q quit          │
+│    ↑/↓ navigate • Tab expand/collapse • Enter copy path • q/Q quit                │
 ╰───────────────────────────────────────────────────────────────────────────────────╯
 ```
 
@@ -81,8 +81,7 @@ Flags:
 |-----|--------|
 | `Up` / `k` | Move cursor up |
 | `Down` / `j` | Move cursor down |
-| `Tab` | Expand branch and move cursor to first child |
-| `Esc` | Collapse current branch (or parent if on a child/leaf) |
+| `Tab` | Expand/collapse branch (and move cursor to first child / parent) |
 | `Enter` | Copy field path to clipboard (e.g., `spec.replicas`) |
 | `PgDown` / `Ctrl+D` | Scroll detail pane down |
 | `PgUp` / `Ctrl+U` | Scroll detail pane up |
