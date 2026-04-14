@@ -42,9 +42,9 @@ tasks:
   lint:install:
     desc: Install golangci-lint
     status:
-      - ./bin/golangci-lint version 2>&1 | grep -q '{{.GOLANGCI_LINT_VERSION}}'
+      - test -f ./bin/golangci-lint
     cmds:
-      - GOBIN={{.ROOT_DIR}}/bin go install github.com/golangci/golangci-lint/cmd/golangci-lint@v{{.GOLANGCI_LINT_VERSION}}
+      - GOBIN={{.ROOT_DIR}}/bin go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v{{.GOLANGCI_LINT_VERSION}}
 
   lint:
     desc: Run golangci-lint with all configured linters
@@ -56,9 +56,9 @@ tasks:
   trivy:install:
     desc: Install trivy
     status:
-      - ./bin/trivy version 2>&1 | grep -q '{{.TRIVY_VERSION}}'
+      - test -f ./bin/trivy
     cmds:
-      - GOBIN={{.ROOT_DIR}}/bin go install github.com/aquasecurity/trivy/cmd/trivy@v{{.TRIVY_VERSION}}
+      - curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b ./bin v{{.TRIVY_VERSION}}
 
   trivy:
     desc: Check for vulnerabilities in dependencies
