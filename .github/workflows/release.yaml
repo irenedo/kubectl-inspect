@@ -46,12 +46,12 @@ jobs:
           if [ "$GOOS" == "windows" ]; then
             Extension=".exe"
           fi
-          go build -o dist/kubectl-inspect-${GOOS}-${GOARCH}${Extension} .
+          go build -o "dist/kubectl-inspect-${GOOS}-${GOARCH}${Extension}" .
 
       - name: Get version
         id: version
         run: |
-          echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          echo "version=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
