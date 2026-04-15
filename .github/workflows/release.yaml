@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  release:
+  build:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -48,6 +48,28 @@ jobs:
           fi
           go build -o "dist/kubectl-inspect-${GOOS}-${GOARCH}${Extension}" .
 
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: kubectl-inspect-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/kubectl-inspect-${{ matrix.goos }}-${{ matrix.goarch }}*
+          retention-days: 1
+
+  create-archive:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: kubectl-inspect-*
+          merge-multiple: true
+
       - name: Get version
         id: version
         run: |
@@ -55,18 +77,46 @@ jobs:
 
       - name: Create source archive
         run: |
-          mv dist kubectl-inspect-${{ steps.version.outputs.version }}
-          tar -czf kubectl-inspect-${{ steps.version.outputs.version }}.tar.gz kubectl-inspect-${{ steps.version.outputs.version }}
-          zip -r kubectl-inspect-${{ steps.version.outputs.version }}.zip kubectl-inspect-${{ steps.version.outputs.version }}
-          rm -rf kubectl-inspect-${{ steps.version.outputs.version }}
+          VERSION=${{ steps.version.outputs.version }}
+          cp -r dist "kubectl-inspect-$VERSION"
+          tar -czf "kubectl-inspect-$VERSION.tar.gz" "kubectl-inspect-$VERSION"
+          zip -r "kubectl-inspect-$VERSION.zip" "kubectl-inspect-$VERSION"
+          rm -rf "kubectl-inspect-$VERSION"
+          mv "kubectl-inspect-$VERSION.tar.gz" dist/
+          mv "kubectl-inspect-$VERSION.zip" dist/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          path: dist/*
+          retention-days: 1
+
+  release:
+    needs: create-archive
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: kubectl-inspect-*
+          merge-multiple: true
+
+      - name: Get version
+        id: version
+        run: |
+          echo "version=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            kubectl-inspect-${{ steps.version.outputs.version }}.tar.gz
-            kubectl-inspect-${{ steps.version.outputs.version }}.zip
-            dist/*
+          files: dist/*
           tag_name: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
           body: |
