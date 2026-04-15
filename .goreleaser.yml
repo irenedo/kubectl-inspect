@@ -1,0 +1,29 @@
+version: 2
+before:
+  hooks:
+    - go mod download
+builds:
+  - id: kubectl-inspect
+    main: .
+    binary: kubectl-inspect
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+
+archives:
+  - ids:
+      - kubectl-inspect
+    name_template: "{{ .ProjectName }}_{{ .Tag }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
+    wrap_in_directory: false
+    formats: [tar.gz]
+    files:
+      - LICENSE

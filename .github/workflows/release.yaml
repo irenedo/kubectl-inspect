@@ -1,136 +1,33 @@
-name: Release
+name: release
 
 on:
   push:
     tags:
-      - 'v*'
-  workflow_dispatch:
+      - 'v*.*.*'
 
 jobs:
-  build:
+  goreleaser:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    strategy:
-      matrix:
-        goos: [linux, darwin, windows]
-        goarch: [amd64, arm64]
-        exclude:
-          - goos: windows
-            goarch: arm64
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Set up Go
+      - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.26'
+          go-version-file: go.mod
 
-      - name: Install Task
-        run: |
-          curl -sfL https://taskfile.dev/install.sh | sh
-          sudo mv bin/task /usr/local/bin/
-
-      - name: Validate code
-        run: task check
-
-      - name: Build binaries
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-        run: |
-          mkdir -p dist
-          Extension=""
-          if [ "$GOOS" == "windows" ]; then
-            Extension=".exe"
-          fi
-          go build -o "dist/kubectl-inspect-${GOOS}-${GOARCH}${Extension}" .
-
-      - name: Upload binaries
-        uses: actions/upload-artifact@v4
+      - name: GoReleaser
+        uses: goreleaser/goreleaser-action@v7
         with:
-          name: kubectl-inspect-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: dist/kubectl-inspect-${{ matrix.goos }}-${{ matrix.goarch }}*
-          retention-days: 1
-
-  create-archive:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Download binaries
-        uses: actions/download-artifact@v4
-        with:
-          path: dist
-          pattern: kubectl-inspect-*
-          merge-multiple: true
-
-      - name: Get version
-        id: version
-        run: |
-          echo "version=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
-
-      - name: Create source archive
-        run: |
-          VERSION=${{ steps.version.outputs.version }}
-          cp -r dist "kubectl-inspect-$VERSION"
-          tar -czf "kubectl-inspect-$VERSION.tar.gz" "kubectl-inspect-$VERSION"
-          zip -r "kubectl-inspect-$VERSION.zip" "kubectl-inspect-$VERSION"
-          rm -rf "kubectl-inspect-$VERSION"
-          mv "kubectl-inspect-$VERSION.tar.gz" dist/
-          mv "kubectl-inspect-$VERSION.zip" dist/
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          path: dist/*
-          retention-days: 1
-
-  release:
-    needs: create-archive
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: dist
-          pattern: kubectl-inspect-*
-          merge-multiple: true
-
-      - name: Get version
-        id: version
-        run: |
-          echo "version=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: dist/*
-          tag_name: ${{ github.ref_name }}
-          name: Release ${{ github.ref_name }}
-          body: |
-            ### Installation via krew
-            
-            ```bash
-            kubectl krew install inspect
-            ```
-            
-            Or build manually:
-            ```bash
-            go install github.com/irenedo/kubectl-inspect@${{ steps.version.outputs.version }}
-            ```
-          draft: false
-          prerelease: false
+          version: latest
+          args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update new version in krew-index
+        uses: rajatjindal/krew-release-bot@v0.0.51
