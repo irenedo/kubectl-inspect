@@ -53,10 +53,20 @@ jobs:
         run: |
           echo "version=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
 
+      - name: Create source archive
+        run: |
+          mv dist kubectl-inspect-${{ steps.version.outputs.version }}
+          tar -czf kubectl-inspect-${{ steps.version.outputs.version }}.tar.gz kubectl-inspect-${{ steps.version.outputs.version }}
+          zip -r kubectl-inspect-${{ steps.version.outputs.version }}.zip kubectl-inspect-${{ steps.version.outputs.version }}
+          rm -rf kubectl-inspect-${{ steps.version.outputs.version }}
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*
+          files: |
+            kubectl-inspect-${{ steps.version.outputs.version }}.tar.gz
+            kubectl-inspect-${{ steps.version.outputs.version }}.zip
+            dist/*
           tag_name: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
           body: |
