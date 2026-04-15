@@ -2,9 +2,9 @@ apiVersion: krew.googlecontainertools.github.com/v1alpha2
 kind: Plugin
 metadata:
   name: inspect
-  version: v0.1.0
+  version: v1.0.0
   spec:
-    version: v0.1.0
+    version: v1.0.0
     shortDescription: Browse Kubernetes resources interactively with a TUI tree browser
     description: |
       An interactive terminal UI for browsing Kubernetes resource and CRD field
