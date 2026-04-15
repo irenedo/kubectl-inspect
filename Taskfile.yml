@@ -4,13 +4,9 @@ vars:
   BINARY: kubectl-inspect
   GOLANGCI_LINT_VERSION: 2.11.4
   TRIVY_VERSION: 0.69.3
+  ACTIONLINT_VERSION: 1.7.12
 
 tasks:
-  default:
-    desc: Run all checks and build the binary
-    cmds:
-      - task: check
-      - task: build
 
   build:
     desc: Build the binary
@@ -68,8 +64,23 @@ tasks:
       - ./bin/trivy fs go.mod
 
   check:
-    desc: Run all checks before publishing (lint, test, trivy)
+    desc: Run all checks before publishing (lint, test, trivy, workflow lint, security scan)
     cmds:
       - task: lint
       - task: test
       - task: trivy
+      - task: actionlint
+
+  actionlint:install:
+    desc: Install actionlint
+    status:
+      - test -f ./bin/actionlint
+    cmds:
+      - GOBIN={{.ROOT_DIR}}/bin go install github.com/rhysd/actionlint/cmd/actionlint@v{{.ACTIONLINT_VERSION}}
+
+  actionlint:
+    desc: Lint GitHub Actions workflows
+    deps:
+      - actionlint:install
+    cmds:
+      - ./bin/actionlint .github/workflows/*.yaml
