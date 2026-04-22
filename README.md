@@ -16,6 +16,7 @@ After repeatedly typing `kubectl explain kind.field`, reading the subfields, the
 - Always fetches fresh data from the API server
 - Copy the field path to the clipboard with `Enter` (e.g., `spec.template.spec.containers`)
 - Works with built-in resources and custom CRDs
+- **Full mouse integration: click to select items and scroll the tree**
 
 ## Installation
 

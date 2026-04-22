@@ -17,6 +17,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		return m.handleKey(msg)
 
+	case tea.MouseMsg:
+		return m.handleMouse(msg)
+
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -82,6 +85,102 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	return m, nil
+}
+
+func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	// Mouse only affects the tree view (left pane)
+	// Mouse events on detail pane are ignored
+	event := tea.MouseEvent(msg)
+	switch {
+	case event.Action == tea.MouseActionPress && event.Button == tea.MouseButtonLeft:
+		return m.handleMouseClick(&event)
+	case event.IsWheel():
+		if event.Button == tea.MouseButtonWheelUp {
+			return m.handleMouseWheelUp()
+		}
+		if event.Button == tea.MouseButtonWheelDown {
+			return m.handleMouseWheelDown()
+		}
+	}
+	return m, nil
+}
+
+func (m Model) handleMouseClick(msg *tea.MouseEvent) (tea.Model, tea.Cmd) {
+	// Convert screen coordinates to tree view coordinates
+	// Mouse X/Y are 0-indexed from top-left of screen
+	// Layout: Y=0 is top border, Y=1 is title bar, Y=2+ is content
+	// Tree view first row is at screen Y=2
+	treeStartRow := 2
+
+	// Calculate tree pane width
+	innerWidth := m.width - 2
+	leftWidth := int(float64(innerWidth-1) * m.leftRatio)
+
+	// Check if click is within tree pane bounds
+	if msg.Y < treeStartRow || msg.Y >= m.height-2 {
+		return m, nil
+	}
+	if msg.X >= leftWidth {
+		return m, nil
+	}
+
+	// Determine which tree item was clicked
+	// Account for treeScroll (vertical scroll offset)
+	clickRow := msg.Y - treeStartRow
+	visibleIdx := clickRow + m.treeScroll
+	if visibleIdx >= 0 && visibleIdx < len(m.visibleNodes) {
+		m.cursor = visibleIdx
+		node := m.visibleNodes[m.cursor]
+
+		// If expandable and clicked, toggle expand/collapse
+		if node.IsExpandable() {
+			if node.Expanded {
+				CollapseNode(node)
+				m.rebuildVisible()
+				// Keep cursor on same node
+				for i, n := range m.visibleNodes {
+					if n == node {
+						m.cursor = i
+						break
+					}
+				}
+			} else {
+				// Expand collapsed node but keep cursor on this node (not first child)
+				ExpandNode(node)
+				m.rebuildVisible()
+				// Cursor still points to this node after expand
+			}
+			m.ensureCursorVisible()
+		}
+
+		m.copiedPath = ""
+		// Always fetch detail when a node is clicked
+		return m, m.prepareFetchDetail()
+	}
+
+	return m, nil
+}
+
+func (m Model) handleMouseWheelUp() (tea.Model, tea.Cmd) {
+	// Move cursor up instead of scrolling the view
+	if m.cursor > 0 {
+		m.cursor--
+		m.copiedPath = ""
+		m.ensureCursorVisible()
+		return m, m.prepareFetchDetail()
+	}
+	return m, nil
+}
+
+func (m Model) handleMouseWheelDown() (tea.Model, tea.Cmd) {
+	// Move cursor down instead of scrolling the view
+	if m.cursor < len(m.visibleNodes)-1 {
+		m.cursor++
+		m.copiedPath = ""
+		m.ensureCursorVisible()
+		return m, m.prepareFetchDetail()
+	}
 	return m, nil
 }
 

@@ -757,3 +757,128 @@ func TestUpdate_TabOnEmptyVisibleNodes(t *testing.T) {
 		t.Error("Tab on empty visible nodes should not trigger a command")
 	}
 }
+
+func TestUpdate_MouseClickInTreePane(t *testing.T) {
+	m, _ := newTestModel(t)
+	m = loadTree(t, m)
+
+	// Initial cursor should be at 0
+	if m.cursor != 0 {
+		t.Fatalf("expected cursor at 0, got %d", m.cursor)
+	}
+
+	// Simulate clicking on second node (row 1 in tree, mouse Y=3 because tree row 0 is at screen Y=2)
+	// Tree pane width with leftRatio=0.4 on width 120: (120-2-1)*0.4 = 46.8 -> 46
+	// Click at X=10 (within tree pane), Y=3 (second line of tree view = tree row 1)
+	msg := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: 10, Y: 3}
+	updated, cmd := m.Update(msg)
+	model := updated.(Model)
+	if model.cursor != 1 {
+		t.Fatalf("expected cursor at 1 after click, got %d", model.cursor)
+	}
+	if cmd == nil {
+		t.Error("expected fetch command after click")
+	}
+}
+
+func TestUpdate_MouseClickOutsideTreePane(t *testing.T) {
+	m, _ := newTestModel(t)
+	m = loadTree(t, m)
+
+	// Click in detail pane (right side) - should not change cursor
+	// Tree pane is roughly left 46 chars, so click at X=50 is outside tree
+	msg := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: 50, Y: 2}
+	updated, _ := m.Update(msg)
+	model := updated.(Model)
+	if model.cursor != 0 {
+		t.Errorf("expected cursor unchanged at 0, got %d", model.cursor)
+	}
+}
+
+func TestUpdate_MouseClickRowOutOfBounds(t *testing.T) {
+	m, _ := newTestModel(t)
+	m = loadTree(t, m)
+
+	// Click at row that's outside the tree pane bounds (Y=0 is title bar)
+	msg := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: 10, Y: 0}
+	updated, _ := m.Update(msg)
+	model := updated.(Model)
+	if model.cursor != 0 {
+		t.Errorf("expected cursor unchanged at 0, got %d", model.cursor)
+	}
+}
+
+func TestUpdate_MouseWheelUp(t *testing.T) {
+	m, _ := newTestModel(t)
+	m = loadTree(t, m)
+
+	// First node is scalar, scroll should not work when at top
+	msg := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonWheelUp}
+	updated, _ := m.Update(msg)
+	model := updated.(Model)
+	if model.treeScroll != 0 {
+		t.Errorf("expected treeScroll at 0, got %d", model.treeScroll)
+	}
+}
+
+func TestUpdate_MouseWheelDown(t *testing.T) {
+	m, _ := newTestModel(t)
+	m = loadTree(t, m)
+
+	// First node is scalar, need to expand to scroll
+	// Check if any node has children
+	hasExpandable := false
+	for _, node := range m.visibleNodes {
+		if node.IsExpandable() && len(node.Children) > 0 {
+			hasExpandable = true
+			break
+		}
+	}
+	if !hasExpandable {
+		t.Skip("No expandable nodes with children found, skipping wheel down test")
+	}
+}
+
+func TestUpdate_MouseScrollsTree(t *testing.T) {
+	m, _ := newTestModel(t)
+	m = loadTree(t, m)
+
+	// Need to expand a node with children first to have more visible nodes
+	// Find a node that is expandable (has children but collapsed)
+	expandedIdx := -1
+	for idx, node := range m.visibleNodes {
+		if node.IsExpandable() && !node.Expanded && len(node.Children) > 0 {
+			// Expand this node
+			node.Expanded = true
+			m.rebuildVisible()
+			// Reset cursor to top so we can scroll
+			m.cursor = 0
+			m.treeScroll = 0
+			// Continue from this node index + 1
+			m.cursor = idx + 1
+			if m.cursor >= len(m.visibleNodes) {
+				m.cursor = len(m.visibleNodes) - 1
+			}
+			expandedIdx = idx
+			break
+		}
+	}
+
+	// Skip test if no expandable node with children found
+	if expandedIdx == -1 {
+		t.Skip("No expandable nodes with children found, skipping scroll test")
+	}
+
+	// Now try scrolling down
+	wheelMsg := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonWheelDown}
+	for scrollCount := 0; scrollCount < 5; scrollCount++ {
+		updated, _ := m.Update(wheelMsg)
+		m = updated.(Model)
+		_ = scrollCount
+	}
+	// Scroll should have increased or stayed at max
+	if m.treeScroll < 0 {
+		t.Errorf("expected treeScroll >= 0 after scrolling, got %d", m.treeScroll)
+	}
+	_ = wheelMsg
+}

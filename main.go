@@ -36,7 +36,7 @@ func main() {
 			executor := kubectl.NewRealExecutor()
 			model := tui.NewModel(resource, executor, flags)
 
-			p := tea.NewProgram(model, tea.WithAltScreen())
+			p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseAllMotion())
 			if _, err := p.Run(); err != nil {
 				return fmt.Errorf("running TUI: %w", err)
 			}
