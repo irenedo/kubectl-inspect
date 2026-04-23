@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"strings"
+
 	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/irenedo/kubectl-inspect/pkg/explain"
@@ -56,16 +58,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+const (
+	focusedPaneTree   = "tree"
+	focusedPaneDetail = "detail"
+)
+
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "q", "Q", "ctrl+c":
 		return m, tea.Quit
 
+	case "left", "h":
+		return m.handleLeft()
+
+	case "right", "l":
+		return m.handleRight()
+
 	case "up", "k":
-		return m.handleCursorUp()
+		return m.handleUp()
 
 	case "down", "j":
-		return m.handleCursorDown()
+		return m.handleDown()
 
 	case "tab":
 		return m.handleTab()
@@ -124,6 +137,9 @@ func (m Model) handleMouseClick(msg *tea.MouseEvent) (tea.Model, tea.Cmd) {
 	if msg.X >= leftWidth {
 		return m, nil
 	}
+
+	// Return focus to tree pane when clicking tree item
+	m.focusedPane = focusedPaneTree
 
 	// Determine which tree item was clicked
 	// Account for treeScroll (vertical scroll offset)
@@ -184,7 +200,15 @@ func (m Model) handleMouseWheelDown() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) handleCursorUp() (tea.Model, tea.Cmd) {
+func (m Model) handleUp() (tea.Model, tea.Cmd) {
+	if m.focusedPane == focusedPaneDetail {
+		// Scroll detail text up
+		if m.detailScroll > 0 {
+			m.detailScroll--
+		}
+		return m, nil
+	}
+	// Navigate tree up
 	if m.cursor > 0 {
 		m.cursor--
 		m.copiedPath = ""
@@ -195,7 +219,16 @@ func (m Model) handleCursorUp() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) handleCursorDown() (tea.Model, tea.Cmd) {
+func (m Model) handleDown() (tea.Model, tea.Cmd) {
+	if m.focusedPane == focusedPaneDetail {
+		// Scroll detail text down
+		lines := len(strings.Split(m.detailText, "\n"))
+		if m.detailScroll < lines-1 {
+			m.detailScroll++
+		}
+		return m, nil
+	}
+	// Navigate tree down
 	if m.cursor < len(m.visibleNodes)-1 {
 		m.cursor++
 		m.copiedPath = ""
@@ -206,32 +239,56 @@ func (m Model) handleCursorDown() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) handleTab() (tea.Model, tea.Cmd) {
+func (m Model) handleLeft() (tea.Model, tea.Cmd) {
 	if len(m.visibleNodes) == 0 || m.cursor >= len(m.visibleNodes) {
 		return m, nil
 	}
 	node := m.visibleNodes[m.cursor]
 	if !node.IsExpandable() {
+		// Collapse parent if currently on a collapsed child
 		if node.Parent != nil {
 			return m.collapseParent(node)
 		}
 		return m, nil
 	}
 	if node.Expanded {
+		// Collapse this node
 		CollapseNode(node)
 		m.rebuildVisible()
 		m.clampCursor()
 		m.ensureCursorVisible()
-	} else {
-		ExpandNode(node)
-		m.rebuildVisible()
-		if len(node.Children) > 0 && m.cursor+1 < len(m.visibleNodes) {
-			m.cursor++
-			m.ensureCursorVisible()
-		}
 	}
 	cmd := m.prepareFetchDetail()
 	return m, cmd
+}
+
+func (m Model) handleRight() (tea.Model, tea.Cmd) {
+	if len(m.visibleNodes) == 0 || m.cursor >= len(m.visibleNodes) {
+		return m, nil
+	}
+	node := m.visibleNodes[m.cursor]
+	if !node.IsExpandable() {
+		return m, nil
+	}
+	if !node.Expanded {
+		// Expand this node
+		ExpandNode(node)
+		m.rebuildVisible()
+		// Cursor still points to this node after expand
+		m.ensureCursorVisible()
+	}
+	cmd := m.prepareFetchDetail()
+	return m, cmd
+}
+
+func (m Model) handleTab() (tea.Model, tea.Cmd) {
+	// Toggle focus between tree and detail panes
+	if m.focusedPane == focusedPaneTree {
+		m.focusedPane = focusedPaneDetail
+	} else {
+		m.focusedPane = focusedPaneTree
+	}
+	return m, nil
 }
 
 func (m Model) collapseParent(node *explain.Node) (tea.Model, tea.Cmd) {

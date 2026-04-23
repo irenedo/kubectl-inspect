@@ -45,6 +45,8 @@ type Model struct {
 	height    int
 	leftRatio float64
 
+	focusedPane string // "tree" or "detail"
+
 	err error
 }
 
@@ -58,6 +60,7 @@ func NewModel(resource string, executor kubectl.Executor, flags kubectl.Flags) M
 		leftRatio: 0.4,
 		width:     80,
 		height:    24,
+		focusedPane: "tree",
 	}
 }
 
