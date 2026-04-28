@@ -11,6 +11,7 @@ import (
 	"github.com/irenedo/kubectl-inspect/pkg/kubectl"
 )
 
+
 var (
 	borderStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
@@ -83,8 +84,8 @@ func (m Model) renderNormal() string {
 	// Bottom help bar
 	helpBar := m.renderHelpBar(innerWidth)
 
-	// Content area height: total - border(2) - title bar(1) - help bar(1)
-	contentHeight := m.height - 4
+	// Content area height: total - topBorder(1) - titleBar(1) - helpBar(helpH) - bottomBorder(1)
+	contentHeight := m.height - m.helpHeight() - 3
 	if contentHeight < 1 {
 		contentHeight = 1
 	}

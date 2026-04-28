@@ -17,17 +17,17 @@ func readFixture(t *testing.T, name string) string {
 }
 
 func TestParseHeader(t *testing.T) {
-	input := readFixture(t, "simple_recursive.txt")
+	input := readFixture(t, "crd_recursive.txt")
 	lines := splitLines(input)
 	hdr, err := parseHeader(lines)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if hdr.kind != "ConfigMap" {
-		t.Errorf("kind: expected ConfigMap, got %q", hdr.kind)
+	if hdr.kind != "Certificate" {
+		t.Errorf("kind: expected Certificate, got %q", hdr.kind)
 	}
-	if hdr.group != "" {
-		t.Errorf("group: expected empty, got %q", hdr.group)
+	if hdr.group != "cert-manager.io" {
+		t.Errorf("group: expected cert-manager.io, got %q", hdr.group)
 	}
 	if hdr.version != "v1" {
 		t.Errorf("version: expected v1, got %q", hdr.version)
@@ -152,7 +152,7 @@ func TestClassifyType(t *testing.T) {
 }
 
 func TestBuildTree_Simple(t *testing.T) {
-	input := readFixture(t, "simple_recursive.txt")
+	input := readFixture(t, "crd_recursive.txt")
 	info, err := ParseRecursive(input)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -429,6 +429,113 @@ func TestDetectIndentUnit(t *testing.T) {
 	lines3 := []string{"   apiVersion\t<string>", "   metadata\t<Object>", "      name\t<string>"}
 	if u := detectIndentUnit(lines3); u != 3 {
 		t.Errorf("expected indent unit 3, got %d", u)
+	}
+
+	// Single indent level (defaults to the smallest indent found)
+	lines1 := []string{"  apiVersion\t<string>"}
+	if u := detectIndentUnit(lines1); u != 2 {
+		t.Errorf("expected indent unit 2 for single level, got %d", u)
+	}
+
+	// Mixed indent levels (detect smallest consistent unit)
+	linesMixed := []string{"   api\t<string>", "   spec\t<Object>", "      name\t<string>"}
+	if u := detectIndentUnit(linesMixed); u != 3 {
+		t.Errorf("expected indent unit 3 for mixed levels, got %d", u)
+	}
+}
+
+// TestPlaceChildNode_ListWithChildren verifies that list fields with children
+// are properly placed in the tree (the FieldTypeList path in placeChildNode).
+func TestPlaceChildNode_ListWithChildren(t *testing.T) {
+	input := readFixture(t, "list_nested.txt")
+	info, err := ParseRecursive(input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// items is a root-level []Item field with children
+	items := findNode(info.Fields, "items")
+	if items == nil {
+		t.Fatal("items not found")
+	}
+	if !items.IsExpandable() {
+		t.Errorf("items should be expandable (list with children), got %d", items.FieldType)
+	}
+	if items.FieldType != FieldTypeList {
+		t.Errorf("items should be FieldTypeList, got %d", items.FieldType)
+	}
+	if len(items.Children) == 0 {
+		t.Error("items should have children")
+	}
+
+	// Check nested field inside items
+	id := findNode(items.Children, "id")
+	if id == nil {
+		t.Fatal("items.id not found")
+	}
+	if id.Path != "items.id" {
+		t.Errorf("items.id path: expected items.id, got %q", id.Path)
+	}
+
+	// Check deeply nested field inside items.config
+	config := findNode(items.Children, "config")
+	if config == nil {
+		t.Fatal("items.config not found")
+	}
+	enabled := findNode(config.Children, "enabled")
+	if enabled == nil {
+		t.Fatal("items.config.enabled not found")
+	}
+	if enabled.Path != "items.config.enabled" {
+		t.Errorf("path: expected items.config.enabled, got %q", enabled.Path)
+	}
+}
+
+// TestPromoteToExpandable_EarlyReturn verifies the promoteToExpandable early return
+// when FieldType is not scalar.
+func TestPromoteToExpandable_EarlyReturn(t *testing.T) {
+	node := &Node{
+		Name:      "test",
+		TypeStr:   "AlreadyObject",
+		FieldType: FieldTypeObject,
+		Depth:     0,
+		Children:  []*Node{{Name: "child"}},
+	}
+
+	// promoteToExpandable should return early without modifying the node
+	promoteToExpandable(node)
+	if node.FieldType != FieldTypeObject {
+		t.Errorf("expected FieldTypeObject, got %d (should not change)", node.FieldType)
+	}
+}
+
+// TestPromoteToExpandable_List verifies promotion of []type to FieldTypeList.
+func TestPromoteToExpandable_List(t *testing.T) {
+	node := &Node{
+		Name:      "items",
+		TypeStr:   "[]Item",
+		FieldType: FieldTypeScalar,
+		Depth:     0,
+	}
+
+	promoteToExpandable(node)
+	if node.FieldType != FieldTypeList {
+		t.Errorf("expected FieldTypeList, got %d", node.FieldType)
+	}
+}
+
+// TestPromoteToExpandable_Object verifies promotion of named type to FieldTypeObject.
+func TestPromoteToExpandable_Object(t *testing.T) {
+	node := &Node{
+		Name:      "config",
+		TypeStr:   "Config",
+		FieldType: FieldTypeScalar,
+		Depth:     0,
+	}
+
+	promoteToExpandable(node)
+	if node.FieldType != FieldTypeObject {
+		t.Errorf("expected FieldTypeObject, got %d", node.FieldType)
 	}
 }
 

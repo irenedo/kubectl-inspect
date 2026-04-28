@@ -22,6 +22,17 @@ type errMsg struct {
 	err error
 }
 
+// modelMutator captures all mutating methods. *Model MUST satisfy this.
+// If a mutating method is accidentally given a value receiver, *Model no longer
+// satisfies this interface and the code won't compile.
+type modelMutator interface {
+	rebuildVisible()
+	ensureCursorVisible()
+	prepareFetchDetail() tea.Cmd
+}
+
+var _ modelMutator = (*Model)(nil)
+
 // Model is the bubbletea model for the TUI.
 type Model struct {
 	resource     string
@@ -53,13 +64,13 @@ type Model struct {
 // NewModel creates a new Model.
 func NewModel(resource string, executor kubectl.Executor, flags kubectl.Flags) Model {
 	return Model{
-		resource:  resource,
-		executor:  executor,
-		flags:     flags,
-		fetcher:   explain.NewFetcher(executor, resource, flags),
-		leftRatio: 0.4,
-		width:     80,
-		height:    24,
+		resource:    resource,
+		executor:    executor,
+		flags:       flags,
+		fetcher:     explain.NewFetcher(executor, resource, flags),
+		leftRatio:   0.4,
+		width:       80,
+		height:      24,
 		focusedPane: "tree",
 	}
 }

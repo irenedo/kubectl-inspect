@@ -1,0 +1,18 @@
+GROUP:      example.com
+KIND:       ListResource
+VERSION:    v1
+
+DESCRIPTION:
+    ListResource for testing list with children at depth.
+
+FIELDS:
+  metadata	<ObjectMeta>
+    name	<string>
+  items	<[]Item>
+    id	<integer>
+    name	<string>
+    config	<Object>
+      enabled	<boolean>
+      value	<string>
+  status	<Status>
+    ready	<boolean>

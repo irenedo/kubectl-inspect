@@ -107,110 +107,125 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	case event.Action == tea.MouseActionPress && event.Button == tea.MouseButtonLeft:
 		return m.handleMouseClick(&event)
 	case event.IsWheel():
-		// Set focus based on which pane mouse is over
-		innerWidth := m.width - 2
-		leftWidth := int(float64(innerWidth-1) * m.leftRatio)
+		m.focusedPane = m.paneForMouse(event.X)
+		return m.handleMouseWheel(event.Button)
+	}
+	return m, nil
+}
 
-		if event.X < leftWidth {
-			m.focusedPane = focusedPaneTree
-		} else {
-			m.focusedPane = focusedPaneDetail
-		}
+// paneForMouse returns the pane the mouse is hovering over.
+func (m Model) paneForMouse(x int) string {
+	innerWidth := m.width - 2
+	leftWidth := int(float64(innerWidth-1) * m.leftRatio)
+	if x < leftWidth {
+		return focusedPaneTree
+	}
+	return focusedPaneDetail
+}
 
-		if event.Button == tea.MouseButtonWheelUp {
-			if m.focusedPane == focusedPaneDetail {
-				if m.detailScroll > 0 {
-					m.detailScroll--
-				}
-			} else if m.focusedPane == focusedPaneTree {
-				if m.cursor > 0 {
-					m.cursor--
-					m.copiedPath = ""
-					m.ensureCursorVisible()
-					cmd := m.prepareFetchDetail()
-					return m, cmd
-				}
-			}
-			return m, nil
+// handleMouseWheel handles scroll wheel events for the focused pane.
+func (m Model) handleMouseWheel(button tea.MouseButton) (tea.Model, tea.Cmd) {
+	switch button {
+	case tea.MouseButtonWheelUp:
+		return m.handleWheelUp()
+	case tea.MouseButtonWheelDown:
+		return m.handleWheelDown()
+	}
+	return m, nil
+}
+
+func (m Model) handleWheelUp() (tea.Model, tea.Cmd) {
+	switch m.focusedPane {
+	case focusedPaneDetail:
+		if m.detailScroll > 0 {
+			m.detailScroll--
 		}
-		if event.Button == tea.MouseButtonWheelDown {
-			if m.focusedPane == focusedPaneDetail {
-				lines := len(strings.Split(m.detailText, "\n"))
-				if m.detailScroll < lines-1 {
-					m.detailScroll++
-				}
-			} else if m.focusedPane == focusedPaneTree {
-				if m.cursor < len(m.visibleNodes)-1 {
-					m.cursor++
-					m.copiedPath = ""
-					m.ensureCursorVisible()
-					cmd := m.prepareFetchDetail()
-					return m, cmd
-				}
-			}
-			return m, nil
+		return m, nil
+	case focusedPaneTree:
+		if m.cursor > 0 {
+			m.cursor--
+			m.copiedPath = ""
+			m.ensureCursorVisible()
+			cmd := m.prepareFetchDetail()
+			return m, cmd
+		}
+	}
+	return m, nil
+}
+
+func (m Model) handleWheelDown() (tea.Model, tea.Cmd) {
+	switch m.focusedPane {
+	case focusedPaneDetail:
+		lines := len(strings.Split(m.detailText, "\n"))
+		if m.detailScroll < lines-1 {
+			m.detailScroll++
+		}
+		return m, nil
+	case focusedPaneTree:
+		if m.cursor < len(m.visibleNodes)-1 {
+			m.cursor++
+			m.copiedPath = ""
+			m.ensureCursorVisible()
+			cmd := m.prepareFetchDetail()
+			return m, cmd
 		}
 	}
 	return m, nil
 }
 
 func (m Model) handleMouseClick(msg *tea.MouseEvent) (tea.Model, tea.Cmd) {
-	// Mouse click sets focus to pane being clicked
-	// Screen layout: Y=0 is top border, Y=1 is title bar, Y=2+ is content
-	// Content area goes from Y=2 to Y=height-2 (before bottom border)
 	contentStartRow := 2
-	contentEndRow := m.height - 2
-
-	// Calculate tree pane width
-	innerWidth := m.width - 2
-	leftWidth := int(float64(innerWidth-1) * m.leftRatio)
-
-	// Check if click is within content area
+	contentEndRow := 2 + m.contentHeight()
 	if msg.Y < contentStartRow || msg.Y >= contentEndRow {
 		return m, nil
 	}
 
-	// Check if click is in tree pane (left)
+	innerWidth := m.width - 2
+	leftWidth := int(float64(innerWidth-1) * m.leftRatio)
+
 	if msg.X < leftWidth {
-		m.focusedPane = focusedPaneTree
+		return m.handleTreeClick(msg.Y, contentStartRow)
+	}
+	m.focusedPane = focusedPaneDetail
+	return m, nil
+}
 
-		// Determine which tree item was clicked
-		clickRow := msg.Y - contentStartRow
-		visibleIdx := clickRow + m.treeScroll
-		if visibleIdx >= 0 && visibleIdx < len(m.visibleNodes) {
-			m.cursor = visibleIdx
-			node := m.visibleNodes[m.cursor]
-
-			// If expandable and clicked, toggle expand/collapse
-			if node.IsExpandable() {
-				if node.Expanded {
-					CollapseNode(node)
-					m.rebuildVisible()
-					// Keep cursor on same node
-					for i, n := range m.visibleNodes {
-						if n == node {
-							m.cursor = i
-							break
-						}
-					}
-				} else {
-					ExpandNode(node)
-					m.rebuildVisible()
-				}
-				m.ensureCursorVisible()
-			}
-
-			m.copiedPath = ""
-			return m, m.prepareFetchDetail()
-		}
-
+func (m Model) handleTreeClick(y, contentStartRow int) (tea.Model, tea.Cmd) {
+	m.focusedPane = focusedPaneTree
+	clickRow := y - contentStartRow
+	visibleIdx := clickRow + m.treeScroll
+	if visibleIdx < 0 || visibleIdx >= len(m.visibleNodes) {
 		return m, nil
 	}
 
-	// Click is in detail pane (right)
-	m.focusedPane = focusedPaneDetail
+	m.cursor = visibleIdx
+	node := m.visibleNodes[m.cursor]
 
-	return m, nil
+	if node.IsExpandable() {
+		m.toggleClickExpand(node)
+		m.ensureCursorVisible()
+	}
+
+	m.copiedPath = ""
+	cmd := m.prepareFetchDetail()
+	return m, cmd
+	
+}
+
+func (m *Model) toggleClickExpand(node *explain.Node) {
+	if node.Expanded {
+		CollapseNode(node)
+		m.rebuildVisible()
+		for i, n := range m.visibleNodes {
+			if n == node {
+				m.cursor = i
+				break
+			}
+		}
+	} else {
+		ExpandNode(node)
+		m.rebuildVisible()
+	}
 }
 
 func (m Model) handleUp() (tea.Model, tea.Cmd) {
@@ -368,9 +383,26 @@ func (m *Model) ensureCursorVisible() {
 }
 
 func (m Model) contentHeight() int {
-	h := m.height - 4 // borders(2) + title bar(1) + help bar(1)
+	h := m.height - m.helpHeight() - 3
 	if h < 1 {
 		h = 1
 	}
 	return h
+}
+
+// helpHeight returns the number of lines the help bar takes at the current content width.
+// The help bar width equals the frame width minus 2 (left+right border chars).
+func (m Model) helpHeight() int {
+	w := m.width - 2
+	if w <= 0 {
+		return 1
+	}
+	lines := 134 / w
+	if 134%w != 0 {
+		lines++
+	}
+	if lines < 1 {
+		lines = 1
+	}
+	return lines
 }
