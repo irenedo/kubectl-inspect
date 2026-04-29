@@ -95,16 +95,16 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "q", "Q", "ctrl+c":
 		return m.handleQuit()
 
-	case "left", "h":
+	case "left":
 		return m.handleLeft()
 
-	case "right", "l":
+	case "right":
 		return m.handleRight()
 
-	case "up", "k":
+	case "up":
 		return m.handleUp()
 
-	case "down", "j":
+	case "down":
 		return m.handleDown()
 
 	case "tab":

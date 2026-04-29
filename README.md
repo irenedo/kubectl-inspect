@@ -24,6 +24,13 @@ After repeatedly typing `kubectl explain kind.field`, reading the subfields, the
 go install github.com/irenedo/kubectl-inspect@latest
 ```
 
+Or with [krew](https://krew.sigs.k8s.io/):
+
+```bash
+kubectl krew update
+kubectl krew install inspect
+```
+
 Or build from source:
 
 ```bash
@@ -56,33 +63,19 @@ Flags:
   -h, --help                 Help for inspect
 ```
 
-## Layout
+### Layout
 
-```
-╭───────────────────────────────────────────────────────────────────────────────────╮
-│                              Deployment (apps/v1)                                 │
-│ ► apiVersion <string>         │ GROUP:  apps                                      │
-│ ► kind <string>               │ KIND:   Deployment                                │
-│ ▼ spec <DeploymentSpec>       │ VERSION: v1                                       │
-│   ● replicas <integer>        │                                                   │
-│   ► selector <LabelSelector>  │ DESCRIPTION:                                      │
-│   ► strategy <DeploymentStrat>│   The deployment strategy to use to replace...    │
-│   ► template <PodTemplateSpec>│                                                   │
-│ ► status <DeploymentStatus>   │ FIELDS:                                           │
-│                               │   replicas  <integer>                             │
-│                               │   selector  <LabelSelector>                       │
-│                               │   ...                                             │
-│    ↑/↓ navigate • Tab expand/collapse • Enter copy path • q/Q quit                │
-╰───────────────────────────────────────────────────────────────────────────────────╯
-```
+![kubectl-inspect screenshot](screenshot.png)
 
 ## Key Bindings
 
 | Key | Action |
 |-----|--------|
-| `Up` / `k` | Move cursor up |
-| `Down` / `j` | Move cursor down |
-| `Tab` | Expand/collapse branch (and move cursor to first child / parent) |
+| `Up` | Move cursor up |
+| `Down` | Move cursor down |
+| `Left` | Expand or collapse branch |
+| `Right` | Expand or collapse branch |
+| `Tab` / `Shift-Tab` | Toggle focus between panes |
 | `Enter` | Copy field path to clipboard (e.g., `spec.replicas`) |
 | `PgDown` / `Ctrl+D` | Scroll detail pane down |
 | `PgUp` / `Ctrl+U` | Scroll detail pane up |
