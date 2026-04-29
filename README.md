@@ -71,10 +71,10 @@ Flags:
 
 | Key | Action |
 |-----|--------|
-| `Up` / `k` | Move cursor up |
-| `Down` / `j` | Move cursor down |
-| `Left` / `h` | Expand or collapse branch |
-| `Right` / `l` | Expand or collapse branch |
+| `Up` | Move cursor up |
+| `Down` | Move cursor down |
+| `Left` | Expand or collapse branch |
+| `Right` | Expand or collapse branch |
 | `Tab` / `Shift-Tab` | Toggle focus between panes |
 | `Enter` | Copy field path to clipboard (e.g., `spec.replicas`) |
 | `PgDown` / `Ctrl+D` | Scroll detail pane down |

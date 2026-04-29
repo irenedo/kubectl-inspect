@@ -81,7 +81,7 @@ func TestUpdate_CursorDown(t *testing.T) {
 		t.Fatalf("expected cursor at 0, got %d", m.cursor)
 	}
 
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
 	model := updated.(Model)
 	if model.cursor != 1 {
 		t.Errorf("expected cursor at 1, got %d", model.cursor)
@@ -93,7 +93,7 @@ func TestUpdate_CursorUp(t *testing.T) {
 	m = loadTree(t, m)
 	m.cursor = 1
 
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
 	model := updated.(Model)
 	if model.cursor != 0 {
 		t.Errorf("expected cursor at 0, got %d", model.cursor)
@@ -105,7 +105,7 @@ func TestUpdate_CursorUpAtZero(t *testing.T) {
 	m = loadTree(t, m)
 	m.cursor = 0
 
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
 	model := updated.(Model)
 	if model.cursor != 0 {
 		t.Errorf("expected cursor to stay at 0, got %d", model.cursor)
@@ -117,7 +117,7 @@ func TestUpdate_CursorDownAtEnd(t *testing.T) {
 	m = loadTree(t, m)
 	m.cursor = len(m.visibleNodes) - 1
 
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
 	model := updated.(Model)
 	if model.cursor != len(m.visibleNodes)-1 {
 		t.Errorf("expected cursor to stay at end, got %d", model.cursor)
@@ -271,7 +271,7 @@ func TestUpdate_DetailFetch(t *testing.T) {
 	m = loadTree(t, m)
 
 	// Move cursor down — should trigger a fetch command
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyDown})
 	if cmd == nil {
 		t.Fatal("expected a fetch detail command on cursor move")
 	}
@@ -508,7 +508,7 @@ func TestUpdate_CursorMoveClearsCopiedPath(t *testing.T) {
 	m.copiedPath = "some.path"
 
 	// Move down should clear copiedPath
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
 	model := updated.(Model)
 	if model.copiedPath != "" {
 		t.Error("expected copiedPath to be cleared after cursor down")
@@ -517,7 +517,7 @@ func TestUpdate_CursorMoveClearsCopiedPath(t *testing.T) {
 	// Reset and test cursor up
 	model.copiedPath = "another.path"
 	model.cursor = 1
-	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyUp})
 	model = updated.(Model)
 	if model.copiedPath != "" {
 		t.Error("expected copiedPath to be cleared after cursor up")
