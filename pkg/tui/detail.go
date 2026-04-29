@@ -24,7 +24,7 @@ var (
 )
 
 // RenderDetail renders the right-pane detail view with colors.
-func RenderDetail(text string, loading bool, scroll, width, height int) string {
+func RenderDetail(text string, loading bool, scroll, lineCount, width, height int) string {
 	if loading {
 		return centerText(detailDimStyle.Render("Fetching..."), width, height)
 	}
@@ -36,7 +36,7 @@ func RenderDetail(text string, loading bool, scroll, width, height int) string {
 
 	// Apply scroll offset
 	if scroll > 0 {
-		if scroll >= len(lines) {
+		if scroll >= lineCount {
 			lines = nil
 		} else {
 			lines = lines[scroll:]

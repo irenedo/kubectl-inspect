@@ -83,11 +83,8 @@ func (m Model) renderNormal() string {
 	// Bottom help bar
 	helpBar := m.renderHelpBar(innerWidth)
 
-	// Content area height: total - border(2) - title bar(1) - help bar(1)
-	contentHeight := m.height - 4
-	if contentHeight < 1 {
-		contentHeight = 1
-	}
+	// Content area height: total - topBorder(1) - titleBar(1) - helpBar - bottomBorder(1)
+	contentHeight := max(m.height-m.helpHeight()-3, 1)
 
 	leftWidth := int(float64(innerWidth-1) * m.leftRatio) // -1 for separator
 	rightWidth := innerWidth - 1 - leftWidth
@@ -104,8 +101,7 @@ func (m Model) renderNormal() string {
 }
 
 func (m Model) renderHelpBar(width int) string {
-	help := formatHelp()
-	return helpBarStyle.Width(width).Render(help)
+	return helpBarStyle.Width(width).Render(formatHelp())
 }
 
 func formatHelp() string {
@@ -114,7 +110,8 @@ func formatHelp() string {
 		desc string
 	}{
 		{"↑/↓", "navigate"},
-		{"Tab", "expand/collapse"},
+		{"←/→", "expand/collapse"},
+		{"Tab/Shift-Tab", "focus pane"},
 		{"Enter", "copy path"},
 		{"PgUp/PgDn", "scroll detail"},
 		{"q/Q", "quit"},
@@ -132,10 +129,7 @@ func (m Model) renderTreePane(width, height int) string {
 	var lines []string
 
 	// Visible nodes in viewport
-	endIdx := m.treeScroll + height
-	if endIdx > len(m.visibleNodes) {
-		endIdx = len(m.visibleNodes)
-	}
+	endIdx := min(m.treeScroll+height, len(m.visibleNodes))
 
 	for i := m.treeScroll; i < endIdx; i++ {
 		node := m.visibleNodes[i]
@@ -153,7 +147,7 @@ func (m Model) renderTreePane(width, height int) string {
 }
 
 func (m Model) renderDetailPane(width, height int) string {
-	return RenderDetail(m.detailText, m.detailLoading, m.detailScroll, width, height)
+	return RenderDetail(m.detailText, m.detailLoading, m.detailScroll, m.detailLineCount, width, height)
 }
 
 func (m Model) renderSeparator(height int) string {

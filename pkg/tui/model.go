@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/irenedo/kubectl-inspect/pkg/explain"
@@ -22,6 +23,18 @@ type errMsg struct {
 	err error
 }
 
+// modelMutator captures all mutating methods. *Model MUST satisfy this.
+// If a mutating method is accidentally given a value receiver, *Model no longer
+// satisfies this interface and the code won't compile.
+type modelMutator interface {
+	rebuildVisible()
+	ensureCursorVisible()
+	prepareFetchDetail() tea.Cmd
+	setDetailText(string)
+}
+
+var _ modelMutator = (*Model)(nil)
+
 // Model is the bubbletea model for the TUI.
 type Model struct {
 	resource     string
@@ -34,10 +47,11 @@ type Model struct {
 	cursor       int
 	treeScroll   int
 
-	detailText     string
-	detailScroll   int
-	detailLoading  bool
-	lastDetailPath string
+	detailText      string
+	detailLineCount int
+	detailScroll    int
+	detailLoading   bool
+	lastDetailPath  string
 
 	copiedPath string
 
@@ -45,19 +59,22 @@ type Model struct {
 	height    int
 	leftRatio float64
 
+	focusedPane string // "tree" or "detail"
+
 	err error
 }
 
 // NewModel creates a new Model.
 func NewModel(resource string, executor kubectl.Executor, flags kubectl.Flags) Model {
 	return Model{
-		resource:  resource,
-		executor:  executor,
-		flags:     flags,
-		fetcher:   explain.NewFetcher(executor, resource, flags),
-		leftRatio: 0.4,
-		width:     80,
-		height:    24,
+		resource:    resource,
+		executor:    executor,
+		flags:       flags,
+		fetcher:     explain.NewFetcher(executor, resource, flags),
+		leftRatio:   0.4,
+		width:       80,
+		height:      24,
+		focusedPane: "tree",
 	}
 }
 
@@ -78,6 +95,12 @@ func (m Model) loadTreeCmd() tea.Cmd {
 		}
 		return treeLoadedMsg{info: info}
 	}
+}
+
+// setDetailText updates the detail text and caches its line count.
+func (m *Model) setDetailText(text string) {
+	m.detailText = text
+	m.detailLineCount = strings.Count(text, "\n") + 1
 }
 
 func (m Model) fetchDetailCmd() tea.Cmd {

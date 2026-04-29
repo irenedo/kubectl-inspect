@@ -6,37 +6,19 @@ import (
 	"testing"
 
 	"github.com/irenedo/kubectl-inspect/pkg/kubectl"
+	"github.com/irenedo/kubectl-inspect/pkg/testutil"
 )
 
-type mockExecutor struct {
-	recursiveOutput string
-	recursiveErr    error
-	fieldOutput     string
-	fieldErr        error
-	lastFieldPath   string
-	lastFlags       kubectl.Flags
-}
-
-func (m *mockExecutor) ExplainRecursive(_ context.Context, _ string, _ kubectl.Flags) (string, error) {
-	return m.recursiveOutput, m.recursiveErr
-}
-
-func (m *mockExecutor) ExplainField(_ context.Context, fieldPath string, flags kubectl.Flags) (string, error) {
-	m.lastFieldPath = fieldPath
-	m.lastFlags = flags
-	return m.fieldOutput, m.fieldErr
-}
-
 func TestFetchDetail_TopLevel(t *testing.T) {
-	mock := &mockExecutor{fieldOutput: "KIND: Deployment\n"}
+	mock := &testutil.MockExecutor{FieldOutput: "KIND: Deployment\n"}
 	fetcher := NewFetcher(mock, "deployment", kubectl.Flags{})
 
 	result := fetcher.FetchDetail(context.Background(), "")
 	if result.Err != nil {
 		t.Fatalf("unexpected error: %v", result.Err)
 	}
-	if mock.lastFieldPath != "deployment" {
-		t.Errorf("expected field path 'deployment', got %q", mock.lastFieldPath)
+	if mock.LastFieldPath != "deployment" {
+		t.Errorf("expected field path 'deployment', got %q", mock.LastFieldPath)
 	}
 	if result.RawOutput != "KIND: Deployment\n" {
 		t.Errorf("unexpected output: %q", result.RawOutput)
@@ -44,15 +26,15 @@ func TestFetchDetail_TopLevel(t *testing.T) {
 }
 
 func TestFetchDetail_NestedPath(t *testing.T) {
-	mock := &mockExecutor{fieldOutput: "FIELD: containers\n"}
+	mock := &testutil.MockExecutor{FieldOutput: "FIELD: containers\n"}
 	fetcher := NewFetcher(mock, "deployment", kubectl.Flags{})
 
 	result := fetcher.FetchDetail(context.Background(), "spec.containers")
 	if result.Err != nil {
 		t.Fatalf("unexpected error: %v", result.Err)
 	}
-	if mock.lastFieldPath != "deployment.spec.containers" {
-		t.Errorf("expected 'deployment.spec.containers', got %q", mock.lastFieldPath)
+	if mock.LastFieldPath != "deployment.spec.containers" {
+		t.Errorf("expected 'deployment.spec.containers', got %q", mock.LastFieldPath)
 	}
 	if result.RawOutput != "FIELD: containers\n" {
 		t.Errorf("unexpected output: %q", result.RawOutput)
@@ -60,7 +42,7 @@ func TestFetchDetail_NestedPath(t *testing.T) {
 }
 
 func TestFetchDetail_Error(t *testing.T) {
-	mock := &mockExecutor{fieldErr: fmt.Errorf("connection refused")}
+	mock := &testutil.MockExecutor{FieldErr: fmt.Errorf("connection refused")}
 	fetcher := NewFetcher(mock, "deployment", kubectl.Flags{})
 
 	result := fetcher.FetchDetail(context.Background(), "spec")
@@ -70,7 +52,7 @@ func TestFetchDetail_Error(t *testing.T) {
 }
 
 func TestFetchDetail_FlagsPassthrough(t *testing.T) {
-	mock := &mockExecutor{fieldOutput: "ok"}
+	mock := &testutil.MockExecutor{FieldOutput: "ok"}
 	flags := kubectl.Flags{
 		Kubeconfig: "/my/kubeconfig",
 		Context:    "prod",
@@ -79,13 +61,13 @@ func TestFetchDetail_FlagsPassthrough(t *testing.T) {
 	fetcher := NewFetcher(mock, "deployment", flags)
 
 	fetcher.FetchDetail(context.Background(), "spec")
-	if mock.lastFlags.Kubeconfig != "/my/kubeconfig" {
-		t.Errorf("kubeconfig not passed through: %q", mock.lastFlags.Kubeconfig)
+	if mock.LastFlags.Kubeconfig != "/my/kubeconfig" {
+		t.Errorf("kubeconfig not passed through: %q", mock.LastFlags.Kubeconfig)
 	}
-	if mock.lastFlags.Context != "prod" {
-		t.Errorf("context not passed through: %q", mock.lastFlags.Context)
+	if mock.LastFlags.Context != "prod" {
+		t.Errorf("context not passed through: %q", mock.LastFlags.Context)
 	}
-	if mock.lastFlags.APIVersion != "apps/v1" {
-		t.Errorf("api-version not passed through: %q", mock.lastFlags.APIVersion)
+	if mock.LastFlags.APIVersion != "apps/v1" {
+		t.Errorf("api-version not passed through: %q", mock.LastFlags.APIVersion)
 	}
 }

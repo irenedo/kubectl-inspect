@@ -81,7 +81,7 @@ func TestExecError_Error(t *testing.T) {
 		t.Errorf("expected exit code in error, got %q", msg)
 	}
 	if !strings.Contains(msg, "something failed") {
-		t.Errorf("expected stderr in error, got %q", msg)
+		t.Errorf("expected stderr in message, got %q", msg)
 	}
 }
 

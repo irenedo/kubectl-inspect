@@ -6,14 +6,14 @@ import (
 )
 
 func TestRenderDetail_Loading(t *testing.T) {
-	result := RenderDetail("", true, 0, 40, 10)
+	result := RenderDetail("", true, 0, 0, 40, 10)
 	if !strings.Contains(result, "Fetching") {
 		t.Error("expected 'Fetching...' when loading")
 	}
 }
 
 func TestRenderDetail_Empty(t *testing.T) {
-	result := RenderDetail("", false, 0, 40, 10)
+	result := RenderDetail("", false, 0, 0, 40, 10)
 	if !strings.Contains(result, "Select a field") {
 		t.Error("expected prompt to select a field when text is empty")
 	}
@@ -21,7 +21,7 @@ func TestRenderDetail_Empty(t *testing.T) {
 
 func TestRenderDetail_WithContent(t *testing.T) {
 	text := "KIND: Deployment\nVERSION: apps/v1\nDESCRIPTION:\n  A deployment.\nFIELDS:\n  replicas\t<integer>\n"
-	result := RenderDetail(text, false, 0, 60, 20)
+	result := RenderDetail(text, false, 0, 7, 60, 20)
 	if !strings.Contains(result, "KIND") {
 		t.Error("expected KIND in rendered detail")
 	}
@@ -29,7 +29,7 @@ func TestRenderDetail_WithContent(t *testing.T) {
 
 func TestRenderDetail_ScrollBeyondContent(t *testing.T) {
 	text := "line1\nline2\nline3\n"
-	result := RenderDetail(text, false, 100, 40, 10)
+	result := RenderDetail(text, false, 100, 3, 40, 10)
 	// Should just be empty/padded lines
 	for _, line := range strings.Split(result, "\n") {
 		if strings.TrimSpace(line) != "" {
@@ -44,7 +44,7 @@ func TestRenderDetail_ScrollPartial(t *testing.T) {
 		lines[i] = "line"
 	}
 	text := strings.Join(lines, "\n")
-	result := RenderDetail(text, false, 5, 40, 10)
+	result := RenderDetail(text, false, 5, 20, 40, 10)
 	// Should render without panic
 	if result == "" {
 		t.Error("expected non-empty result")

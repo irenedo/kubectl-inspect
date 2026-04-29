@@ -1,0 +1,18 @@
+GROUP:      example.com
+KIND:       ExampleConfig
+VERSION:    v1
+
+DESCRIPTION:
+    ExampleConfig for testing expandable tree nodes.
+
+FIELDS:
+  metadata	<ObjectMeta>
+    annotations	<map[string]string>
+    labels	<map[string]string>
+    name	<string>
+    namespace	<string>
+  spec	<Spec>
+    enabled	<boolean>
+    count	<integer>
+  status	<Status>
+    ready	<boolean>
