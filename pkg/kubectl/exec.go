@@ -82,6 +82,9 @@ func (r *RealExecutor) ExplainField(ctx context.Context, fieldPath string, flags
 }
 
 func buildArgs(resource string, flags Flags) []string {
+	if strings.HasPrefix(resource, "-") {
+		resource = "-" + resource
+	}
 	args := []string{"explain", resource}
 	if flags.Kubeconfig != "" {
 		args = append(args, "--kubeconfig", flags.Kubeconfig)

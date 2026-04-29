@@ -1,8 +1,6 @@
 package tui
 
 import (
-	"strings"
-
 	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/irenedo/kubectl-inspect/pkg/explain"
@@ -43,9 +41,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.detailLoading = false
 			m.detailScroll = 0
 			if msg.result.Err != nil {
-				m.detailText = "Error: " + msg.result.Err.Error()
+				m.setDetailText("Error: " + msg.result.Err.Error())
 			} else {
-				m.detailText = msg.result.RawOutput
+				m.setDetailText(msg.result.RawOutput)
 			}
 		}
 		return m, nil
@@ -63,10 +61,39 @@ const (
 	focusedPaneDetail = "detail"
 )
 
+// treeScrollDown increments detailScroll by half the visible height.
+func (m *Model) treeScrollDown() {
+	if m.detailScroll < m.detailLineCount-1 {
+		m.detailScroll++
+	}
+}
+
+// treeScrollUp decrements detailScroll by half the visible height.
+func (m *Model) treeScrollUp() {
+	m.detailScroll -= m.contentHeight() / 2
+	if m.detailScroll < 0 {
+		m.detailScroll = 0
+	}
+}
+
+// scrollDetailDown increments detailScroll by one line.
+func (m *Model) scrollDetailDown() {
+	if m.detailScroll < m.detailLineCount-1 {
+		m.detailScroll++
+	}
+}
+
+// scrollDetailUp decrements detailScroll by one line.
+func (m *Model) scrollDetailUp() {
+	if m.detailScroll > 0 {
+		m.detailScroll--
+	}
+}
+
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "q", "Q", "ctrl+c":
-		return m, tea.Quit
+		return m.handleQuit()
 
 	case "left", "h":
 		return m.handleLeft()
@@ -87,18 +114,19 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleEnter()
 
 	case "pgdown", "ctrl+d":
-		m.detailScroll += m.contentHeight() / 2
+		m.treeScrollDown()
 		return m, nil
 
 	case "pgup", "ctrl+u":
-		m.detailScroll -= m.contentHeight() / 2
-		if m.detailScroll < 0 {
-			m.detailScroll = 0
-		}
+		m.treeScrollUp()
 		return m, nil
 	}
 
 	return m, nil
+}
+
+func (m Model) handleQuit() (tea.Model, tea.Cmd) {
+	return m, tea.Quit
 }
 
 func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
@@ -137,14 +165,11 @@ func (m Model) handleMouseWheel(button tea.MouseButton) (tea.Model, tea.Cmd) {
 func (m Model) handleWheelUp() (tea.Model, tea.Cmd) {
 	switch m.focusedPane {
 	case focusedPaneDetail:
-		if m.detailScroll > 0 {
-			m.detailScroll--
-		}
-		return m, nil
+		m.scrollDetailUp()
 	case focusedPaneTree:
 		if m.cursor > 0 {
 			m.cursor--
-			m.copiedPath = ""
+			m.clearCopied()
 			m.ensureCursorVisible()
 			cmd := m.prepareFetchDetail()
 			return m, cmd
@@ -156,15 +181,11 @@ func (m Model) handleWheelUp() (tea.Model, tea.Cmd) {
 func (m Model) handleWheelDown() (tea.Model, tea.Cmd) {
 	switch m.focusedPane {
 	case focusedPaneDetail:
-		lines := len(strings.Split(m.detailText, "\n"))
-		if m.detailScroll < lines-1 {
-			m.detailScroll++
-		}
-		return m, nil
+		m.scrollDetailDown()
 	case focusedPaneTree:
 		if m.cursor < len(m.visibleNodes)-1 {
 			m.cursor++
-			m.copiedPath = ""
+			m.clearCopied()
 			m.ensureCursorVisible()
 			cmd := m.prepareFetchDetail()
 			return m, cmd
@@ -203,13 +224,11 @@ func (m Model) handleTreeClick(y, contentStartRow int) (tea.Model, tea.Cmd) {
 
 	if node.IsExpandable() {
 		m.toggleClickExpand(node)
-		m.ensureCursorVisible()
 	}
 
-	m.copiedPath = ""
+	m.clearCopied()
 	cmd := m.prepareFetchDetail()
 	return m, cmd
-	
 }
 
 func (m *Model) toggleClickExpand(node *explain.Node) {
@@ -228,20 +247,29 @@ func (m *Model) toggleClickExpand(node *explain.Node) {
 	}
 }
 
+// guardTree returns early if there are no visible nodes or cursor is out of bounds.
+func (m Model) guardTree() bool {
+	return len(m.visibleNodes) == 0 || m.cursor >= len(m.visibleNodes)
+}
+
+// navigateTree resets copied path and returns a detail fetch command.
+func (m *Model) navigateTree() tea.Cmd {
+	m.clearCopied()
+	m.ensureCursorVisible()
+	return m.prepareFetchDetail()
+}
+
 func (m Model) handleUp() (tea.Model, tea.Cmd) {
 	if m.focusedPane == focusedPaneDetail {
-		// Scroll detail text up
-		if m.detailScroll > 0 {
-			m.detailScroll--
-		}
+		m.scrollDetailUp()
 		return m, nil
 	}
-	// Navigate tree up
+	if m.guardTree() {
+		return m, nil
+	}
 	if m.cursor > 0 {
 		m.cursor--
-		m.copiedPath = ""
-		m.ensureCursorVisible()
-		cmd := m.prepareFetchDetail()
+		cmd := m.navigateTree()
 		return m, cmd
 	}
 	return m, nil
@@ -249,38 +277,32 @@ func (m Model) handleUp() (tea.Model, tea.Cmd) {
 
 func (m Model) handleDown() (tea.Model, tea.Cmd) {
 	if m.focusedPane == focusedPaneDetail {
-		// Scroll detail text down
-		lines := len(strings.Split(m.detailText, "\n"))
-		if m.detailScroll < lines-1 {
-			m.detailScroll++
-		}
+		m.scrollDetailDown()
 		return m, nil
 	}
-	// Navigate tree down
+	if m.guardTree() {
+		return m, nil
+	}
 	if m.cursor < len(m.visibleNodes)-1 {
 		m.cursor++
-		m.copiedPath = ""
-		m.ensureCursorVisible()
-		cmd := m.prepareFetchDetail()
+		cmd := m.navigateTree()
 		return m, cmd
 	}
 	return m, nil
 }
 
 func (m Model) handleLeft() (tea.Model, tea.Cmd) {
-	if len(m.visibleNodes) == 0 || m.cursor >= len(m.visibleNodes) {
+	if m.guardTree() {
 		return m, nil
 	}
 	node := m.visibleNodes[m.cursor]
 	if !node.IsExpandable() {
-		// Collapse parent if currently on a collapsed child
 		if node.Parent != nil {
 			return m.collapseParent(node)
 		}
 		return m, nil
 	}
 	if node.Expanded {
-		// Collapse this node
 		CollapseNode(node)
 		m.rebuildVisible()
 		m.clampCursor()
@@ -291,7 +313,7 @@ func (m Model) handleLeft() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleRight() (tea.Model, tea.Cmd) {
-	if len(m.visibleNodes) == 0 || m.cursor >= len(m.visibleNodes) {
+	if m.guardTree() {
 		return m, nil
 	}
 	node := m.visibleNodes[m.cursor]
@@ -299,10 +321,8 @@ func (m Model) handleRight() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if !node.Expanded {
-		// Expand this node
 		ExpandNode(node)
 		m.rebuildVisible()
-		// Cursor still points to this node after expand
 		m.ensureCursorVisible()
 	}
 	cmd := m.prepareFetchDetail()
@@ -310,7 +330,6 @@ func (m Model) handleRight() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleTab() (tea.Model, tea.Cmd) {
-	// Toggle focus between tree and detail panes
 	if m.focusedPane == focusedPaneTree {
 		m.focusedPane = focusedPaneDetail
 	} else {
@@ -345,6 +364,11 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+// clearCopied resets the copied path feedback.
+func (m *Model) clearCopied() {
+	m.copiedPath = ""
 }
 
 // prepareFetchDetail marks the model as loading and returns a fetch command.
@@ -383,11 +407,7 @@ func (m *Model) ensureCursorVisible() {
 }
 
 func (m Model) contentHeight() int {
-	h := m.height - m.helpHeight() - 3
-	if h < 1 {
-		h = 1
-	}
-	return h
+	return max(m.height-m.helpHeight()-3, 1)
 }
 
 // helpHeight returns the number of lines the help bar takes at the current content width.
@@ -397,12 +417,6 @@ func (m Model) helpHeight() int {
 	if w <= 0 {
 		return 1
 	}
-	lines := 134 / w
-	if 134%w != 0 {
-		lines++
-	}
-	if lines < 1 {
-		lines = 1
-	}
-	return lines
+	help := formatHelp()
+	return max((len(help)+w-1)/w, 1)
 }

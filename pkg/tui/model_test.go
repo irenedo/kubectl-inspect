@@ -1,59 +1,22 @@
 package tui
 
 import (
-	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/irenedo/kubectl-inspect/pkg/explain"
 	"github.com/irenedo/kubectl-inspect/pkg/kubectl"
+	"github.com/irenedo/kubectl-inspect/pkg/testutil"
 )
 
-type testExecutor struct {
-	recursiveOutput string
-	recursiveErr    error
-	fieldOutput     string
-	fieldErr        error
-	lastFieldPath   string
-}
-
-func (t *testExecutor) ExplainRecursive(_ context.Context, _ string, _ kubectl.Flags) (string, error) {
-	return t.recursiveOutput, t.recursiveErr
-}
-
-func (t *testExecutor) ExplainField(_ context.Context, fieldPath string, _ kubectl.Flags) (string, error) {
-	t.lastFieldPath = fieldPath
-	return t.fieldOutput, t.fieldErr
-}
-
-func readTestFixture(t *testing.T, name string) string {
+func newTestModel(t *testing.T) (Model, *testutil.MockExecutor) {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join("..", "explain", "testdata", name))
-	if err != nil {
-		t.Fatalf("failed to read fixture %s: %v", name, err)
-	}
-	return string(data)
-}
-
-func findExpandableIndex(nodes []*explain.Node) int {
-	for i, n := range nodes {
-		if n.IsExpandable() && len(n.Children) > 0 {
-			return i
-		}
-	}
-	return -1
-}
-
-func newTestModel(t *testing.T) (Model, *testExecutor) {
-	t.Helper()
-	fixture := readTestFixture(t, "expandable_first.txt")
-	exec := &testExecutor{
-		recursiveOutput: fixture,
-		fieldOutput:     "KIND: ExampleConfig\nVERSION: v1\n",
+	fixture := testutil.ReadFixtureDirect(t, "../explain/testdata/expandable_first.txt")
+	exec := &testutil.MockExecutor{
+		RecursiveOutput: fixture,
+		FieldOutput:     "KIND: ExampleConfig\nVERSION: v1\n",
 	}
 	m := NewModel("exampleconfig", exec, kubectl.Flags{})
 	m.width = 120
@@ -67,6 +30,18 @@ func loadTree(t *testing.T, m Model) Model {
 	msg := cmd()
 	updated, _ := m.Update(msg)
 	return updated.(Model)
+}
+
+// expandAt expands the node at idx and rebuilds the visible list.
+func expandAt(m *Model, idx int) {
+	ExpandNode(m.visibleNodes[idx])
+	m.rebuildVisible()
+}
+
+// collapseAt collapses the node at idx and rebuilds the visible list.
+func collapseAt(m *Model, idx int) {
+	CollapseNode(m.visibleNodes[idx])
+	m.rebuildVisible()
 }
 
 func TestInit_LoadsTree(t *testing.T) {
@@ -85,8 +60,8 @@ func TestInit_LoadsTree(t *testing.T) {
 }
 
 func TestInit_Error(t *testing.T) {
-	exec := &testExecutor{
-		recursiveErr: &kubectl.ExecError{Stderr: "not found", ExitCode: 1},
+	exec := &testutil.MockExecutor{
+		RecursiveErr: &kubectl.ExecError{Stderr: "not found", ExitCode: 1},
 	}
 	m := NewModel("nonexistent", exec, kubectl.Flags{})
 	cmd := m.Init()
@@ -153,7 +128,7 @@ func TestUpdate_ExpandCollapse(t *testing.T) {
 	m, _ := newTestModel(t)
 	m = loadTree(t, m)
 
-	idx := findExpandableIndex(m.visibleNodes)
+	idx := testutil.FindIndex(m.visibleNodes, func(n *explain.Node) bool { return n.IsExpandable() && len(n.Children) > 0 })
 	if idx < 0 {
 		t.Skip("no expandable node found")
 	}
@@ -170,9 +145,7 @@ func TestUpdate_ExpandCollapse(t *testing.T) {
 	if !model.visibleNodes[idx].Expanded {
 		t.Error("expected node to be expanded via right key")
 	}
-	if cmd == nil {
-		t.Error("expected a fetch detail command after expand")
-	}
+	testutil.ExpectFetchCmd(t, cmd)
 
 	// Collapse with left key
 	expandedCount := len(model.visibleNodes)
@@ -184,16 +157,14 @@ func TestUpdate_ExpandCollapse(t *testing.T) {
 	if model.visibleNodes[idx].Expanded {
 		t.Error("expected node to be collapsed")
 	}
-	if cmd == nil {
-		t.Error("expected a fetch detail command after collapse")
-	}
+	testutil.ExpectFetchCmd(t, cmd)
 }
 
 func TestUpdate_EscOnExpandedNode(t *testing.T) {
 	m, _ := newTestModel(t)
 	m = loadTree(t, m)
 
-	idx := findExpandableIndex(m.visibleNodes)
+	idx := testutil.FindIndex(m.visibleNodes, func(n *explain.Node) bool { return n.IsExpandable() && len(n.Children) > 0 })
 	if idx < 0 {
 		t.Skip("no expandable node found")
 	}
@@ -204,8 +175,7 @@ func TestUpdate_EscOnExpandedNode(t *testing.T) {
 		t.Skip("expandable node has no children")
 	}
 
-	ExpandNode(m.visibleNodes[idx])
-	m.rebuildVisible()
+	expandAt(&m, idx)
 
 	expandedCount := len(m.visibleNodes)
 
@@ -218,9 +188,7 @@ func TestUpdate_EscOnExpandedNode(t *testing.T) {
 	if model.visibleNodes[idx].Expanded {
 		t.Error("expected node to be collapsed")
 	}
-	if cmd == nil {
-		t.Error("expected a fetch detail command after collapse")
-	}
+	testutil.ExpectFetchCmd(t, cmd)
 }
 
 func TestUpdate_EnterCopiesPath(t *testing.T) {
@@ -240,9 +208,7 @@ func TestUpdate_EnterCopiesPath(t *testing.T) {
 	model := updated.(Model)
 
 	// Enter should not return a command
-	if cmd != nil {
-		t.Error("expected nil command from Enter (copy path)")
-	}
+	testutil.ExpectNoCmd(t, cmd)
 
 	// copiedPath should be set (clipboard may fail in CI, so we check copiedPath
 	// is either set or remains empty if clipboard is unavailable)
@@ -260,13 +226,12 @@ func TestUpdate_EnterLeaf(t *testing.T) {
 	m, _ := newTestModel(t)
 	m = loadTree(t, m)
 
-	idx := findExpandableIndex(m.visibleNodes)
+	idx := testutil.FindIndex(m.visibleNodes, func(n *explain.Node) bool { return n.IsExpandable() && len(n.Children) > 0 })
 	if idx < 0 {
 		t.Skip("no expandable node found")
 	}
 
-	ExpandNode(m.visibleNodes[idx])
-	m.rebuildVisible()
+	expandAt(&m, idx)
 
 	leafIdx := -1
 	for i, n := range m.visibleNodes {
@@ -350,7 +315,7 @@ func TestUpdate_WindowResize(t *testing.T) {
 func TestUpdate_DetailScroll(t *testing.T) {
 	m, _ := newTestModel(t)
 	m = loadTree(t, m)
-	m.detailText = strings.Repeat("line\n", 100)
+	m.setDetailText(testutil.FakeDetail(100))
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyPgDown})
 	model := updated.(Model)
@@ -386,7 +351,7 @@ func TestView_LoadingState(t *testing.T) {
 func TestView_NormalRender(t *testing.T) {
 	m, _ := newTestModel(t)
 	m = loadTree(t, m)
-	m.detailText = "KIND: ExampleConfig\nVERSION: v1\n"
+	m.setDetailText("KIND: ExampleConfig\nVERSION: v1\n")
 	view := m.View()
 	if !strings.Contains(view, "ExampleConfig") {
 		t.Error("normal view should contain resource kind")
@@ -420,7 +385,7 @@ func TestUpdate_QuitWithCtrlC(t *testing.T) {
 func TestUpdate_ScrollDetailCtrlD(t *testing.T) {
 	m, _ := newTestModel(t)
 	m = loadTree(t, m)
-	m.detailText = strings.Repeat("line\n", 100)
+	m.setDetailText(testutil.FakeDetail(100))
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
 	model := updated.(Model)
@@ -432,7 +397,7 @@ func TestUpdate_ScrollDetailCtrlD(t *testing.T) {
 func TestUpdate_ScrollDetailCtrlU(t *testing.T) {
 	m, _ := newTestModel(t)
 	m = loadTree(t, m)
-	m.detailText = strings.Repeat("line\n", 100)
+	m.setDetailText(testutil.FakeDetail(100))
 	m.detailScroll = 20
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlU})
@@ -458,14 +423,13 @@ func TestUpdate_TabOnAlreadyExpanded(t *testing.T) {
 	m, _ := newTestModel(t)
 	m = loadTree(t, m)
 
-	idx := findExpandableIndex(m.visibleNodes)
+	idx := testutil.FindIndex(m.visibleNodes, func(n *explain.Node) bool { return n.IsExpandable() && len(n.Children) > 0 })
 	if idx < 0 {
 		t.Skip("no expandable node found")
 	}
 
 	m.cursor = idx
-	ExpandNode(m.visibleNodes[idx])
-	m.rebuildVisible()
+	expandAt(&m, idx)
 	count := len(m.visibleNodes)
 
 	// Tab on already expanded node should be a no-op for visible nodes
@@ -474,23 +438,20 @@ func TestUpdate_TabOnAlreadyExpanded(t *testing.T) {
 	if len(model.visibleNodes) != count {
 		t.Error("Tab on already expanded node should not change visible nodes")
 	}
-	if cmd != nil {
-		t.Error("Tab on already expanded node should not trigger a command")
-	}
+	testutil.ExpectNoCmd(t, cmd)
 }
 
 func TestUpdate_TabOnScalar(t *testing.T) {
 	m, _ := newTestModel(t)
 	m = loadTree(t, m)
 
-	idx := findExpandableIndex(m.visibleNodes)
+	idx := testutil.FindIndex(m.visibleNodes, func(n *explain.Node) bool { return n.IsExpandable() && len(n.Children) > 0 })
 	if idx < 0 {
 		t.Skip("no expandable node found")
 	}
 
 	m.cursor = idx
-	ExpandNode(m.visibleNodes[idx])
-	m.rebuildVisible()
+	expandAt(&m, idx)
 
 	leafIdx := -1
 	for i, n := range m.visibleNodes {
@@ -511,9 +472,7 @@ func TestUpdate_TabOnScalar(t *testing.T) {
 	if len(model.visibleNodes) != count {
 		t.Error("Tab on scalar should not change visible nodes")
 	}
-	if cmd != nil {
-		t.Error("Tab on scalar should not trigger a command")
-	}
+	testutil.ExpectNoCmd(t, cmd)
 }
 
 func TestUpdate_EscOnRootLeafNoOp(t *testing.T) {
@@ -540,9 +499,7 @@ func TestUpdate_EscOnRootLeafNoOp(t *testing.T) {
 	if len(model.visibleNodes) != count {
 		t.Error("Esc on root collapsed node should be a no-op")
 	}
-	if cmd != nil {
-		t.Error("Esc on root collapsed node should not trigger a command")
-	}
+	testutil.ExpectNoCmd(t, cmd)
 }
 
 func TestUpdate_CursorMoveClearsCopiedPath(t *testing.T) {
@@ -581,9 +538,7 @@ func TestUpdate_UnknownKeyIsNoOp(t *testing.T) {
 	if len(model.visibleNodes) != count {
 		t.Error("unknown key should not change visible nodes")
 	}
-	if cmd != nil {
-		t.Error("unknown key should not trigger a command")
-	}
+	testutil.ExpectNoCmd(t, cmd)
 }
 
 func TestUpdate_UnknownMsgType(t *testing.T) {
@@ -591,9 +546,7 @@ func TestUpdate_UnknownMsgType(t *testing.T) {
 	// Send an unrelated message type
 	updated, cmd := m.Update("some random string message")
 	model := updated.(Model)
-	if cmd != nil {
-		t.Error("unknown msg type should not trigger a command")
-	}
+	testutil.ExpectNoCmd(t, cmd)
 	if model.err != nil {
 		t.Error("unknown msg type should not set an error")
 	}
@@ -622,7 +575,7 @@ func TestView_CopiedPathInTitle(t *testing.T) {
 	m, _ := newTestModel(t)
 	m = loadTree(t, m)
 	m.copiedPath = "spec.replicas"
-	m.detailText = "KIND: Deployment\n"
+	m.setDetailText("KIND: Deployment\n")
 	view := m.View()
 	if !strings.Contains(view, "Copied") {
 		t.Error("view should show 'Copied' when copiedPath is set")
@@ -713,15 +666,14 @@ func TestUpdate_EscOnScalarGrandchild_CollapsesParent(t *testing.T) {
 	m, _ := newTestModel(t)
 	m = loadTree(t, m)
 
-	idx := findExpandableIndex(m.visibleNodes)
+	idx := testutil.FindIndex(m.visibleNodes, func(n *explain.Node) bool { return n.IsExpandable() && len(n.Children) > 0 })
 	if idx < 0 {
 		t.Skip("no expandable node found")
 	}
 
 	// Expand root to reveal children
 	m.cursor = idx
-	ExpandNode(m.visibleNodes[idx])
-	m.rebuildVisible()
+	expandAt(&m, idx)
 
 	// Find an expandable child and expand it
 	childIdx := -1
@@ -769,9 +721,7 @@ func TestUpdate_EscOnScalarGrandchild_CollapsesParent(t *testing.T) {
 	if model.visibleNodes[model.cursor] != parentNode {
 		t.Errorf("expected cursor on parent %q, got %q", parentNode.Name, model.visibleNodes[model.cursor].Name)
 	}
-	if cmd == nil {
-		t.Error("expected a fetch detail command after collapsing parent")
-	}
+	testutil.ExpectFetchCmd(t, cmd)
 }
 
 func TestUpdate_TabOnEmptyVisibleNodes(t *testing.T) {
@@ -785,9 +735,7 @@ func TestUpdate_TabOnEmptyVisibleNodes(t *testing.T) {
 	if len(model.visibleNodes) != 0 {
 		t.Error("Tab on empty visible nodes should not change state")
 	}
-	if cmd != nil {
-		t.Error("Tab on empty visible nodes should not trigger a command")
-	}
+	testutil.ExpectNoCmd(t, cmd)
 }
 
 func TestUpdate_MouseClickInTreePane(t *testing.T) {
@@ -808,9 +756,7 @@ func TestUpdate_MouseClickInTreePane(t *testing.T) {
 	if model.cursor != 1 {
 		t.Fatalf("expected cursor at 1 after click, got %d", model.cursor)
 	}
-	if cmd == nil {
-		t.Error("expected fetch command after click")
-	}
+	testutil.ExpectFetchCmd(t, cmd)
 }
 
 func TestUpdate_MouseClickOnFirstRow(t *testing.T) {
@@ -831,22 +777,7 @@ func TestUpdate_MouseClickYCoordinateMapping(t *testing.T) {
 	m = loadTree(t, m)
 
 	// Write View output to a file for analysis
-	os.WriteFile("/tmp/view_output.txt", []byte(m.View()), 0644)
-
-	// Examine the View output structure
-	lines := strings.Split(m.View(), "\n")
-	t.Logf("View height: %d, m.height: %d", len(lines), m.height)
-	t.Logf("Content height (calculated): %d", m.contentHeight())
-
-	// Print first 5 and last 5 lines to understand layout
-	t.Log("=== First 5 lines ===")
-	for i := 0; i < 5 && i < len(lines); i++ {
-		t.Logf("  Y=%d: '%s'", i, lines[i])
-	}
-	t.Log("=== Last 5 lines ===")
-	for i := len(lines) - 5; i < len(lines); i++ {
-		t.Logf("  Y=%d: '%s'", i, lines[i])
-	}
+	// (os removed — no longer needed)
 
 	// Verify Y coordinates for all visible rows (only rows with actual nodes)
 	// The content starts at Y=2 (after border at Y=0 and title bar at Y=1)
@@ -862,7 +793,6 @@ func TestUpdate_MouseClickYCoordinateMapping(t *testing.T) {
 		}
 	}
 }
-
 
 func TestUpdate_MouseClickOutsideTreePane(t *testing.T) {
 	m, _ := newTestModel(t)
@@ -896,15 +826,13 @@ func TestUpdate_MouseClickOnExpandableNode_CollapsesIt(t *testing.T) {
 	m = loadTree(t, m)
 
 	// Find an expandable node
-	idx := findExpandableIndex(m.visibleNodes)
+	idx := testutil.FindIndex(m.visibleNodes, func(n *explain.Node) bool { return n.IsExpandable() && len(n.Children) > 0 })
 	if idx < 0 {
 		t.Skip("no expandable node found")
 	}
 
 	// Expand the node first (using the API directly)
-	// Note: We operate on m after loadTree, which has the correct visibleNodes
-	ExpandNode(m.visibleNodes[idx])
-	m.rebuildVisible()
+	expandAt(&m, idx)
 	if !m.visibleNodes[idx].Expanded {
 		t.Fatal("expected node to be expanded")
 	}
@@ -932,9 +860,7 @@ func TestUpdate_MouseClickOnExpandableNode_CollapsesIt(t *testing.T) {
 		t.Errorf("expected fewer visible nodes after collapse: got %d, expected < %d",
 			len(model.visibleNodes), preCollapseCount)
 	}
-	if cmd == nil {
-		t.Error("expected fetch command after click")
-	}
+	testutil.ExpectFetchCmd(t, cmd)
 }
 
 func TestUpdate_MouseClickOnExpandableNode_ExpandsIt(t *testing.T) {
@@ -942,14 +868,13 @@ func TestUpdate_MouseClickOnExpandableNode_ExpandsIt(t *testing.T) {
 	m = loadTree(t, m)
 
 	// Find a collapsed expandable node
-	idx := findExpandableIndex(m.visibleNodes)
+	idx := testutil.FindIndex(m.visibleNodes, func(n *explain.Node) bool { return n.IsExpandable() && len(n.Children) > 0 })
 	if idx < 0 {
 		t.Skip("no expandable node found")
 	}
 
 	if m.visibleNodes[idx].Expanded {
-		CollapseNode(m.visibleNodes[idx])
-		m.rebuildVisible()
+		collapseAt(&m, idx)
 		// Re-find the index after rebuild
 		for i, n := range m.visibleNodes {
 			if n == m.visibleNodes[idx] {
@@ -978,20 +903,7 @@ func TestUpdate_MouseClickOnExpandableNode_ExpandsIt(t *testing.T) {
 		t.Errorf("expected more visible nodes after expand: got %d, expected > %d",
 			len(model.visibleNodes), preExpandCount)
 	}
-	if cmd == nil {
-		t.Error("expected fetch command after click")
-	}
-
-	if !m.visibleNodes[idx].Expanded {
-		t.Error("expected node to be expanded after click")
-	}
-	if len(model.visibleNodes) <= preExpandCount {
-		t.Errorf("expected more visible nodes after expand: got %d, expected > %d",
-			len(model.visibleNodes), preExpandCount)
-	}
-	if cmd == nil {
-		t.Error("expected fetch command after click")
-	}
+	testutil.ExpectFetchCmd(t, cmd)
 }
 
 func TestUpdate_MouseClickOnNonExpandableNode_NoExpand(t *testing.T) {
@@ -1045,18 +957,32 @@ func TestUpdate_MouseWheelUp(t *testing.T) {
 func TestUpdate_MouseWheelDown(t *testing.T) {
 	m, _ := newTestModel(t)
 	m = loadTree(t, m)
+	if len(m.visibleNodes) < 2 {
+		t.Skip("Need at least 2 visible nodes to test wheel down")
+	}
 
-	// First node is scalar, need to expand to scroll
-	// Check if any node has children
-	hasExpandable := false
-	for _, node := range m.visibleNodes {
-		if node.IsExpandable() && len(node.Children) > 0 {
-			hasExpandable = true
-			break
+	initialCursor := m.cursor
+
+	updated, cmd := m.Update(tea.MouseMsg{
+		Y:      3,
+		Action: tea.MouseActionPress,
+		Button: tea.MouseButtonWheelDown,
+	})
+	model := updated.(Model)
+
+	// In tree pane (default), wheel down should move cursor down
+	if initialCursor < len(m.visibleNodes)-1 {
+		if model.cursor != initialCursor+1 {
+			t.Errorf("expected cursor %d -> %d, got %d", initialCursor, initialCursor+1, model.cursor)
 		}
 	}
-	if !hasExpandable {
-		t.Skip("No expandable nodes with children found, skipping wheel down test")
+	if model.copiedPath != "" {
+		t.Error("expected copiedPath to be cleared on wheel")
+	}
+
+	// Should return a fetch detail command
+	if cmd == nil {
+		t.Error("expected fetch detail command on wheel down in tree")
 	}
 }
 
@@ -1064,14 +990,13 @@ func TestUpdate_EscOnExpandedNode_CollapsesIt(t *testing.T) {
 	m, _ := newTestModel(t)
 	m = loadTree(t, m)
 
-	idx := findExpandableIndex(m.visibleNodes)
+	idx := testutil.FindIndex(m.visibleNodes, func(n *explain.Node) bool { return n.IsExpandable() && len(n.Children) > 0 })
 	if idx < 0 {
 		t.Skip("no expandable node found")
 	}
 
 	m.cursor = idx
-	ExpandNode(m.visibleNodes[idx])
-	m.rebuildVisible()
+	expandAt(&m, idx)
 	expandedCount := len(m.visibleNodes)
 
 	// Press left to collapse
@@ -1081,9 +1006,7 @@ func TestUpdate_EscOnExpandedNode_CollapsesIt(t *testing.T) {
 	if len(model.visibleNodes) >= expandedCount {
 		t.Error("expected fewer visible nodes after collapse")
 	}
-	if cmd == nil {
-		t.Error("expected fetch command after collapse")
-	}
+	testutil.ExpectFetchCmd(t, cmd)
 	if model.visibleNodes[idx].Expanded {
 		t.Error("expected node to be collapsed")
 	}
@@ -1093,7 +1016,7 @@ func TestUpdate_handleLeft_ExpandableCollapsed(t *testing.T) {
 	m, _ := newTestModel(t)
 	m = loadTree(t, m)
 
-	idx := findExpandableIndex(m.visibleNodes)
+	idx := testutil.FindIndex(m.visibleNodes, func(n *explain.Node) bool { return n.IsExpandable() && len(n.Children) > 0 })
 	if idx < 0 {
 		t.Skip("no expandable node found")
 	}
@@ -1109,9 +1032,7 @@ func TestUpdate_handleLeft_ExpandableCollapsed(t *testing.T) {
 	if len(model.visibleNodes) != count {
 		t.Error("left on collapsed node should not change visible nodes")
 	}
-	if cmd == nil {
-		t.Error("left should still trigger a fetch detail command")
-	}
+	testutil.ExpectFetchCmd(t, cmd)
 }
 
 func TestUpdate_handleLeft_NoVisibleNodes(t *testing.T) {
@@ -1124,16 +1045,14 @@ func TestUpdate_handleLeft_NoVisibleNodes(t *testing.T) {
 	if model.cursor != 0 {
 		t.Error("cursor should not change with no nodes")
 	}
-	if cmd != nil {
-		t.Error("should be no-op with no visible nodes")
-	}
+	testutil.ExpectNoCmd(t, cmd)
 }
 
 func TestUpdate_handleRight_OnExpandable(t *testing.T) {
 	m, _ := newTestModel(t)
 	m = loadTree(t, m)
 
-	idx := findExpandableIndex(m.visibleNodes)
+	idx := testutil.FindIndex(m.visibleNodes, func(n *explain.Node) bool { return n.IsExpandable() && len(n.Children) > 0 })
 	if idx < 0 {
 		t.Skip("no expandable node found")
 	}
@@ -1152,9 +1071,7 @@ func TestUpdate_handleRight_OnExpandable(t *testing.T) {
 	if !model.visibleNodes[idx].Expanded {
 		t.Error("expected node to be expanded")
 	}
-	if cmd == nil {
-		t.Error("expected fetch command after expand")
-	}
+	testutil.ExpectFetchCmd(t, cmd)
 }
 
 func TestUpdate_handleRight_OnScalar(t *testing.T) {
@@ -1182,23 +1099,20 @@ func TestUpdate_handleRight_OnScalar(t *testing.T) {
 	if len(model.visibleNodes) != count {
 		t.Error("right on scalar should not change visible nodes")
 	}
-	if cmd != nil {
-		t.Error("right on scalar should not trigger a command")
-	}
+	testutil.ExpectNoCmd(t, cmd)
 }
 
 func TestUpdate_handleRight_AlreadyExpanded(t *testing.T) {
 	m, _ := newTestModel(t)
 	m = loadTree(t, m)
 
-	idx := findExpandableIndex(m.visibleNodes)
+	idx := testutil.FindIndex(m.visibleNodes, func(n *explain.Node) bool { return n.IsExpandable() && len(n.Children) > 0 })
 	if idx < 0 {
 		t.Skip("no expandable node found")
 	}
 
 	m.cursor = idx
-	ExpandNode(m.visibleNodes[idx])
-	m.rebuildVisible()
+	expandAt(&m, idx)
 	count := len(m.visibleNodes)
 
 	// Press right again — visible nodes should not change
@@ -1207,9 +1121,7 @@ func TestUpdate_handleRight_AlreadyExpanded(t *testing.T) {
 	if len(model.visibleNodes) != count {
 		t.Error("right on already expanded node should not change visible nodes")
 	}
-	if cmd == nil {
-		t.Error("right should still trigger a fetch detail command")
-	}
+	testutil.ExpectFetchCmd(t, cmd)
 }
 
 func TestUpdate_handleRight_NoVisibleNodes(t *testing.T) {
@@ -1222,23 +1134,20 @@ func TestUpdate_handleRight_NoVisibleNodes(t *testing.T) {
 	if model.cursor != 0 {
 		t.Error("cursor should not change with no nodes")
 	}
-	if cmd != nil {
-		t.Error("should be no-op with no visible nodes")
-	}
+	testutil.ExpectNoCmd(t, cmd)
 }
 
 func TestUpdate_collapseParent_MovesCursor(t *testing.T) {
 	m, _ := newTestModel(t)
 	m = loadTree(t, m)
 
-	idx := findExpandableIndex(m.visibleNodes)
+	idx := testutil.FindIndex(m.visibleNodes, func(n *explain.Node) bool { return n.IsExpandable() && len(n.Children) > 0 })
 	if idx < 0 {
 		t.Skip("no expandable node found")
 	}
 
 	m.cursor = idx
-	ExpandNode(m.visibleNodes[idx])
-	m.rebuildVisible()
+	expandAt(&m, idx)
 
 	// Find a child node (depth > 0)
 	childIdx := -1
@@ -1275,9 +1184,7 @@ func TestUpdate_collapseParent_MovesCursor(t *testing.T) {
 	if model.visibleNodes[model.cursor] != parent {
 		t.Errorf("expected cursor on parent, got %q", model.visibleNodes[model.cursor].Name)
 	}
-	if cmd == nil {
-		t.Error("expected fetch command after collapseParent")
-	}
+	testutil.ExpectFetchCmd(t, cmd)
 }
 
 func TestUpdate_CursorOutOfBoundsOnLeft(t *testing.T) {
@@ -1295,9 +1202,7 @@ func TestUpdate_CursorOutOfBoundsOnLeft(t *testing.T) {
 	if model.cursor != outOfBounds {
 		t.Error("cursor should not move left when out of bounds")
 	}
-	if cmd != nil {
-		t.Error("left on out-of-bounds cursor should be a no-op")
-	}
+	testutil.ExpectNoCmd(t, cmd)
 }
 
 func TestUpdate_CursorOutOfBoundsOnRight(t *testing.T) {
@@ -1311,9 +1216,7 @@ func TestUpdate_CursorOutOfBoundsOnRight(t *testing.T) {
 	if model.err != nil {
 		t.Errorf("unexpected error: %v", model.err)
 	}
-	if cmd != nil {
-		t.Error("right on out-of-bounds cursor should be a no-op")
-	}
+	testutil.ExpectNoCmd(t, cmd)
 }
 
 func TestUpdate_handleUp_DetailPane(t *testing.T) {
@@ -1321,7 +1224,7 @@ func TestUpdate_handleUp_DetailPane(t *testing.T) {
 	m = loadTree(t, m)
 	m.focusedPane = focusedPaneDetail
 	m.detailScroll = 10
-	m.detailText = strings.Repeat("line\n", 50)
+	m.setDetailText(testutil.FakeDetail(50))
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
 	model := updated.(Model)
@@ -1334,7 +1237,7 @@ func TestUpdate_handleUp_DetailPaneAtTop(t *testing.T) {
 	m, _ := newTestModel(t)
 	m.focusedPane = focusedPaneDetail
 	m.detailScroll = 0
-	m.detailText = strings.Repeat("line\n", 50)
+	m.setDetailText(testutil.FakeDetail(50))
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
 	model := updated.(Model)
@@ -1348,7 +1251,7 @@ func TestUpdate_handleDown_DetailPane(t *testing.T) {
 	m = loadTree(t, m)
 	m.focusedPane = focusedPaneDetail
 	m.detailScroll = 10
-	m.detailText = strings.Repeat("line\n", 100)
+	m.setDetailText(testutil.FakeDetail(100))
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
 	model := updated.(Model)
@@ -1364,7 +1267,7 @@ func TestUpdate_handleDown_DetailPaneAtBottom(t *testing.T) {
 	// "line\n" split by "\n" gives ["line", ""] per iteration, so 50 iterations = 100 lines
 	// max scroll = 100-1 = 99, so set to 99 to test staying at bottom
 	m.detailScroll = 99
-	m.detailText = strings.Repeat("line\n", 50)
+	m.setDetailText(testutil.FakeDetail(50))
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
 	model := updated.(Model)
@@ -1379,7 +1282,7 @@ func TestUpdate_handleDown_DetailPaneExactBottom(t *testing.T) {
 	m.focusedPane = focusedPaneDetail
 	// 25 iterations → 50 lines → max scroll = 49
 	m.detailScroll = 49
-	m.detailText = strings.Repeat("line\n", 25)
+	m.setDetailText(testutil.FakeDetail(25))
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
 	model := updated.(Model)
@@ -1393,7 +1296,7 @@ func TestUpdate_MouseWheelDetailDown(t *testing.T) {
 	m = loadTree(t, m)
 	m.focusedPane = focusedPaneDetail
 	m.detailScroll = 10
-	m.detailText = strings.Repeat("line\n", 100)
+	m.setDetailText(testutil.FakeDetail(100))
 
 	// Mouse over detail pane (X=80 on width 120 with leftRatio=0.4: leftWidth=~46, 80 > 46 = detail)
 	msg := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonWheelDown, X: 80}
@@ -1409,7 +1312,7 @@ func TestUpdate_MouseWheelDetailUp(t *testing.T) {
 	m = loadTree(t, m)
 	m.focusedPane = focusedPaneDetail
 	m.detailScroll = 5
-	m.detailText = strings.Repeat("line\n", 100)
+	m.setDetailText(testutil.FakeDetail(100))
 
 	msg := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonWheelUp, X: 80}
 	updated, _ := m.Update(msg)
@@ -1458,7 +1361,7 @@ func TestUpdate_MouseWheelUpDetailPaneFocus(t *testing.T) {
 	m = loadTree(t, m)
 	m.focusedPane = focusedPaneTree // initially tree-focused
 	m.detailScroll = 10
-	m.detailText = strings.Repeat("line\n", 100)
+	m.setDetailText(testutil.FakeDetail(100))
 
 	// Mouse in detail pane with wheel up — should also set focus to detail
 	msg := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonWheelUp, X: 80}
@@ -1477,7 +1380,7 @@ func TestUpdate_MouseWheelUpDetailAtTop(t *testing.T) {
 	m = loadTree(t, m)
 	m.focusedPane = focusedPaneDetail
 	m.detailScroll = 0
-	m.detailText = strings.Repeat("line\n", 100)
+	m.setDetailText(testutil.FakeDetail(100))
 
 	msg := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonWheelUp, X: 80}
 	updated, _ := m.Update(msg)
@@ -1582,16 +1485,14 @@ func TestUpdate_MouseScrollsTree(t *testing.T) {
 
 	// Now try scrolling down
 	wheelMsg := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonWheelDown}
-	for scrollCount := 0; scrollCount < 5; scrollCount++ {
+	for range 5 {
 		updated, _ := m.Update(wheelMsg)
 		m = updated.(Model)
-		_ = scrollCount
 	}
 	// Scroll should have increased or stayed at max
 	if m.treeScroll < 0 {
 		t.Errorf("expected treeScroll >= 0 after scrolling, got %d", m.treeScroll)
 	}
-	_ = wheelMsg
 }
 
 func TestUpdate_MouseClick_NarrowWidthHelpWrapping(t *testing.T) {
@@ -1618,7 +1519,6 @@ func TestUpdate_MouseClick_NarrowWidthHelpWrapping(t *testing.T) {
 	}
 }
 
-
 func TestUpdate_MouseClick_NarrowWidthHelp3Lines(t *testing.T) {
 	m, _ := newTestModel(t)
 	m.width = 47 // narrow width causes help to wrap to 3 lines
@@ -1644,5 +1544,225 @@ func TestUpdate_MouseClick_NarrowWidthHelp3Lines(t *testing.T) {
 	model = updated.(Model)
 	if model.cursor != 1 {
 		t.Errorf("click at Y=3 (second node): expected cursor=1, got %d", model.cursor)
+	}
+}
+
+func TestUpdate_WheelUp_DetailPane(t *testing.T) {
+	m, _ := newTestModel(t)
+	m.focusedPane = focusedPaneDetail
+	m.detailScroll = 10
+	m.setDetailText(testutil.FakeDetail(100))
+
+	updated, _ := m.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonWheelUp, X: 80})
+	model := updated.(Model)
+	if model.detailScroll >= 10 {
+		t.Error("detailScroll should decrease after wheel up in detail pane")
+	}
+}
+
+func TestUpdate_WheelUp_DetailPaneAtTop(t *testing.T) {
+	m, _ := newTestModel(t)
+	m.focusedPane = focusedPaneDetail
+	m.detailScroll = 0
+
+	updated, _ := m.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonWheelUp, X: 80})
+	model := updated.(Model)
+	if model.detailScroll != 0 {
+		t.Errorf("detailScroll should stay at 0, got %d", model.detailScroll)
+	}
+}
+
+func TestUpdate_TabFromDetailToTree(t *testing.T) {
+	m, _ := newTestModel(t)
+	m.focusedPane = focusedPaneDetail
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model := updated.(Model)
+	if model.focusedPane != focusedPaneTree {
+		t.Errorf("expected focusedPane to switch to tree, got %q", model.focusedPane)
+	}
+}
+
+func TestUpdate_LeftOnCollapsedNoParent(t *testing.T) {
+	m, _ := newTestModel(t)
+	m = loadTree(t, m)
+
+	// Find a root-level node that is not expandable
+	for i, n := range m.visibleNodes {
+		if n.IsExpandable() || n.Parent != nil {
+			continue
+		}
+		m.cursor = i
+		updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyLeft})
+		model := updated.(Model)
+		if model.cursor != m.cursor {
+			t.Error("cursor should not change on left at root scalar")
+		}
+		testutil.ExpectNoCmd(t, cmd)
+		return
+	}
+	t.Skip("no root-level non-expandable node found in fixture")
+}
+
+func TestUpdate_HelpHeight_ZeroWidth(t *testing.T) {
+	m, _ := newTestModel(t)
+	m.width = 0
+	h := m.helpHeight()
+	if h != 1 {
+		t.Errorf("expected helpHeight 1 for zero width, got %d", h)
+	}
+}
+
+func TestUpdate_EnsureCursorVisible_MinHeight(t *testing.T) {
+	m, _ := newTestModel(t)
+	m.height = 2 // contentHeight clamps to 1
+	m.treeScroll = 5
+	m.cursor = 0
+
+	m.ensureCursorVisible()
+	if m.treeScroll != 0 {
+		t.Errorf("expected treeScroll clamped to 0, got %d", m.treeScroll)
+	}
+}
+
+func TestUpdate_FetchDetailCmd_EmptyNodes(t *testing.T) {
+	m := NewModel("deployment", &testutil.MockExecutor{}, kubectl.Flags{})
+	m.visibleNodes = nil
+	m.cursor = 0
+	cmd := m.fetchDetailCmd()
+	testutil.ExpectNoCmd(t, cmd)
+}
+
+func TestUpdate_FetchDetailCmd_OutOfBounds(t *testing.T) {
+	m, _ := newTestModel(t)
+	m.cursor = len(m.visibleNodes) + 100
+	cmd := m.fetchDetailCmd()
+	testutil.ExpectNoCmd(t, cmd)
+}
+
+func TestUpdate_TreeClickOnNonVisibleRow(t *testing.T) {
+	m, _ := newTestModel(t)
+	m = loadTree(t, m)
+
+	// Click at Y=0 (title bar) — should not change cursor
+	msg := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: 10, Y: 0}
+	updated, _ := m.Update(msg)
+	model := updated.(Model)
+	if model.cursor != 0 {
+		t.Errorf("expected cursor unchanged at 0, got %d", model.cursor)
+	}
+}
+
+func TestUpdate_HandleMouseWheel_UnknownButton(t *testing.T) {
+	m, _ := newTestModel(t)
+	m = loadTree(t, m)
+	cursor := m.cursor
+
+	// Middle button (not a wheel)
+	updated, _ := m.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonMiddle})
+	model := updated.(Model)
+	if model.cursor != cursor {
+		t.Error("unknown mouse button should not change cursor")
+	}
+}
+
+func TestUpdate_HandleTreeClick_CellBeyondVisibleNodes(t *testing.T) {
+	m, _ := newTestModel(t)
+	m = loadTree(t, m)
+	m.treeScroll = 0
+
+	// Calculate a Y that's past the last visible node
+	lastNodeIdx := len(m.visibleNodes) - 1
+	y := 2 + lastNodeIdx + 5 // well past last visible node
+	msg := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: 10, Y: y}
+	updated, _ := m.Update(msg)
+	model := updated.(Model)
+	// Should not panic; cursor stays at 0 (initial)
+	_ = model
+}
+
+func TestUpdate_LeftOnExpandableAlreadyCollapsed(t *testing.T) {
+	m, _ := newTestModel(t)
+	m = loadTree(t, m)
+
+	idx := testutil.FindIndex(m.visibleNodes, func(n *explain.Node) bool {
+		return n.IsExpandable() && !n.Expanded
+	})
+	if idx < 0 {
+		t.Skip("no collapsed expandable node found")
+	}
+
+	m.cursor = idx
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	model := updated.(Model)
+	// Should still trigger a fetch detail
+	testutil.ExpectFetchCmd(t, cmd)
+	// Node should remain collapsed
+	if model.visibleNodes[idx].Expanded {
+		t.Error("collapsed node should remain collapsed after left")
+	}
+}
+
+func TestUpdate_Up_DetailPaneScrolls(t *testing.T) {
+	m, _ := newTestModel(t)
+	m.focusedPane = focusedPaneDetail
+	m.detailScroll = 5
+	m.setDetailText(testutil.FakeDetail(50))
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	model := updated.(Model)
+	if model.detailScroll >= 5 {
+		t.Error("detailScroll should decrease when up pressed in detail pane")
+	}
+}
+
+func TestUpdate_Down_DetailPaneScrolls(t *testing.T) {
+	m, _ := newTestModel(t)
+	m.focusedPane = focusedPaneDetail
+	m.detailScroll = 5
+	m.setDetailText(testutil.FakeDetail(50))
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model := updated.(Model)
+	if model.detailScroll <= 5 {
+		t.Error("detailScroll should increase when down pressed in detail pane")
+	}
+}
+
+func TestLoadTreeCmd_ParseError(t *testing.T) {
+	exec := &testutil.MockExecutor{
+		RecursiveOutput: "not a valid kubectl explain output\n{{{\n",
+	}
+	m := NewModel("foo", exec, kubectl.Flags{})
+	cmd := m.Init()
+	msg := cmd()
+	errMsg, ok := msg.(errMsg)
+	if !ok {
+		t.Fatalf("expected errMsg, got %T", msg)
+	}
+	if errMsg.err == nil {
+		t.Error("expected parse error")
+	}
+}
+
+func TestMouseClick_NarrowWidthHelpWrapping2Lines(t *testing.T) {
+	m, _ := newTestModel(t)
+	m.width = 60
+	m.height = 40
+	m = loadTree(t, m)
+
+	expectedH := m.helpHeight()
+	if expectedH < 2 {
+		t.Fatalf("expected helpHeight>=2 at width 60, got %d", expectedH)
+	}
+
+	for i := range m.visibleNodes {
+		y := 2 + i
+		msg := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: 10, Y: y}
+		updated, _ := m.Update(msg)
+		model := updated.(Model)
+		if model.cursor != i {
+			t.Errorf("click at Y=%d (node %d): expected cursor=%d, got %d", y, i, i, model.cursor)
+		}
 	}
 }

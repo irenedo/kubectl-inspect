@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/irenedo/kubectl-inspect/pkg/explain"
@@ -29,6 +30,7 @@ type modelMutator interface {
 	rebuildVisible()
 	ensureCursorVisible()
 	prepareFetchDetail() tea.Cmd
+	setDetailText(string)
 }
 
 var _ modelMutator = (*Model)(nil)
@@ -45,10 +47,11 @@ type Model struct {
 	cursor       int
 	treeScroll   int
 
-	detailText     string
-	detailScroll   int
-	detailLoading  bool
-	lastDetailPath string
+	detailText      string
+	detailLineCount int
+	detailScroll    int
+	detailLoading   bool
+	lastDetailPath  string
 
 	copiedPath string
 
@@ -92,6 +95,12 @@ func (m Model) loadTreeCmd() tea.Cmd {
 		}
 		return treeLoadedMsg{info: info}
 	}
+}
+
+// setDetailText updates the detail text and caches its line count.
+func (m *Model) setDetailText(text string) {
+	m.detailText = text
+	m.detailLineCount = strings.Count(text, "\n") + 1
 }
 
 func (m Model) fetchDetailCmd() tea.Cmd {

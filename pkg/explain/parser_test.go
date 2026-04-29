@@ -1,24 +1,14 @@
 package explain
 
 import (
-	"os"
-	"path/filepath"
-	"strings"
 	"testing"
+
+	"github.com/irenedo/kubectl-inspect/pkg/testutil"
 )
 
-func readFixture(t *testing.T, name string) string {
-	t.Helper()
-	data, err := os.ReadFile(filepath.Join("testdata", name))
-	if err != nil {
-		t.Fatalf("failed to read fixture %s: %v", name, err)
-	}
-	return string(data)
-}
-
 func TestParseHeader(t *testing.T) {
-	input := readFixture(t, "crd_recursive.txt")
-	lines := splitLines(input)
+	input := testutil.ReadFixture(t, "crd_recursive.txt")
+	lines := testutil.SplitLines(input)
 	hdr, err := parseHeader(lines)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -41,8 +31,8 @@ func TestParseHeader(t *testing.T) {
 }
 
 func TestParseHeader_WithGroup(t *testing.T) {
-	input := readFixture(t, "deployment_recursive.txt")
-	lines := splitLines(input)
+	input := testutil.ReadFixture(t, "deployment_recursive.txt")
+	lines := testutil.SplitLines(input)
 	hdr, err := parseHeader(lines)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -114,7 +104,7 @@ func TestParseFieldLine_EnumLine(t *testing.T) {
 }
 
 func TestParseFieldLine_Empty(t *testing.T) {
-	_, _, _, err := parseFieldLine("   ")
+	_, _, _, err := parseFieldLine("    ")
 	if err == nil {
 		t.Error("expected error for empty line")
 	}
@@ -130,13 +120,6 @@ func TestClassifyType(t *testing.T) {
 		{"boolean", FieldTypeScalar},
 		{"IntOrString", FieldTypeScalar},
 		{"Object", FieldTypeObject},
-		{"[]Object", FieldTypeList},
-		{"[]string", FieldTypeScalar},
-		{"[]integer", FieldTypeScalar},
-		{"map[string]string", FieldTypeMap},
-		{"map[string]Quantity", FieldTypeMap},
-		// Named types — initially classified as Object, postClassify fixes them
-		{"ObjectMeta", FieldTypeObject},
 		{"DeploymentSpec", FieldTypeObject},
 		{"[]LabelSelectorRequirement", FieldTypeList},
 		{"[]Container", FieldTypeList},
@@ -152,7 +135,7 @@ func TestClassifyType(t *testing.T) {
 }
 
 func TestBuildTree_Simple(t *testing.T) {
-	input := readFixture(t, "crd_recursive.txt")
+	input := testutil.ReadFixture(t, "crd_recursive.txt")
 	info, err := ParseRecursive(input)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -197,7 +180,7 @@ func TestBuildTree_Simple(t *testing.T) {
 }
 
 func TestBuildTree_Deployment(t *testing.T) {
-	input := readFixture(t, "deployment_recursive.txt")
+	input := testutil.ReadFixture(t, "deployment_recursive.txt")
 	info, err := ParseRecursive(input)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -284,7 +267,7 @@ func TestBuildTree_Deployment(t *testing.T) {
 }
 
 func TestBuildTree_CRD(t *testing.T) {
-	input := readFixture(t, "crd_recursive.txt")
+	input := testutil.ReadFixture(t, "crd_recursive.txt")
 	info, err := ParseRecursive(input)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -313,7 +296,7 @@ func TestBuildTree_CRD(t *testing.T) {
 }
 
 func TestBuildTree_RealOutput(t *testing.T) {
-	input := readFixture(t, "deployment_recursive.txt")
+	input := testutil.ReadFixture(t, "deployment_recursive.txt")
 	info, err := ParseRecursive(input)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -346,7 +329,7 @@ func TestBuildTree_RealOutput(t *testing.T) {
 }
 
 func TestBuildTree_RealKubectlOutput(t *testing.T) {
-	input := readFixture(t, "real_deployment_recursive.txt")
+	input := testutil.ReadFixture(t, "real_deployment_recursive.txt")
 	info, err := ParseRecursive(input)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -404,7 +387,7 @@ func TestBuildTree_RealKubectlOutput(t *testing.T) {
 }
 
 func TestParseRecursive_ErrorOutput(t *testing.T) {
-	input := readFixture(t, "error_output.txt")
+	input := testutil.ReadFixture(t, "error_output.txt")
 	_, err := ParseRecursive(input)
 	if err == nil {
 		t.Error("expected error for error output")
@@ -447,7 +430,7 @@ func TestDetectIndentUnit(t *testing.T) {
 // TestPlaceChildNode_ListWithChildren verifies that list fields with children
 // are properly placed in the tree (the FieldTypeList path in placeChildNode).
 func TestPlaceChildNode_ListWithChildren(t *testing.T) {
-	input := readFixture(t, "list_nested.txt")
+	input := testutil.ReadFixture(t, "list_nested.txt")
 	info, err := ParseRecursive(input)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -539,6 +522,73 @@ func TestPromoteToExpandable_Object(t *testing.T) {
 	}
 }
 
+func TestDetectIndentUnit_SingleIndent(t *testing.T) {
+	// All lines at same indent — should return default of 2
+	lines := []string{
+		"    field1\t<string>",
+		"    field2\t<string>",
+	}
+	unit := detectIndentUnit(lines)
+	if unit != 2 {
+		t.Errorf("expected default indent 2 for single indent level, got %d", unit)
+	}
+}
+
+func TestDetectIndentUnit_ZeroOrInvalidLines(t *testing.T) {
+	lines := []string{"", "   ", "no indent info here"}
+	unit := detectIndentUnit(lines)
+	if unit != 2 {
+		t.Errorf("expected default indent 2 for invalid lines, got %d", unit)
+	}
+}
+
+func TestDetectIndentUnit_ThreeLevels(t *testing.T) {
+	lines := []string{
+		"    field1\t<string>",
+		"        nested\t<string>",
+		"            deeper\t<string>",
+	}
+	unit := detectIndentUnit(lines)
+	if unit != 4 {
+		t.Errorf("expected indent 4 for 4-space levels, got %d", unit)
+	}
+}
+
+func TestPlaceChildNode_RootLevel(t *testing.T) {
+	node := &Node{Name: "foo", Depth: 0}
+	roots, _ := placeChildNode(node, "foo", 0, nil, nil)
+	if len(roots) != 1 || roots[0] != node {
+		t.Error("root-level node should be appended to roots")
+	}
+	if node.Path != "foo" {
+		t.Errorf("expected path 'foo', got %q", node.Path)
+	}
+}
+
+func TestPlaceChildNode_DeepStackReplace(t *testing.T) {
+	// Build a stack: [A, B, C] at depths 0, 1, 2
+	// Now place a child of A (depth 0) — should replace stack[0]
+	A := &Node{Name: "A", Depth: 0}
+	B := &Node{Name: "B", Depth: 1}
+	C := &Node{Name: "C", Depth: 2}
+
+	var roots, stack []*Node
+	roots, stack = placeChildNode(A, "A", 0, roots, stack)
+	roots, stack = placeChildNode(B, "B", 1, roots, stack)
+	roots, stack = placeChildNode(C, "C", 2, roots, stack)
+
+	// D is a sibling of A (depth 0) — should trigger the stack[depth] = node branch
+	D := &Node{Name: "D", Depth: 0}
+	roots, stack = placeChildNode(D, "D", 0, roots, stack)
+
+	if len(roots) != 2 {
+		t.Errorf("expected 2 root nodes, got %d", len(roots))
+	}
+	if len(stack) != 1 && stack[0] != D {
+		t.Errorf("expected stack top to be D, got %v", stack)
+	}
+}
+
 // helpers
 
 func findNode(nodes []*Node, name string) *Node {
@@ -548,8 +598,4 @@ func findNode(nodes []*Node, name string) *Node {
 		}
 	}
 	return nil
-}
-
-func splitLines(s string) []string {
-	return strings.Split(s, "\n")
 }

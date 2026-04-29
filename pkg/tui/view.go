@@ -11,7 +11,6 @@ import (
 	"github.com/irenedo/kubectl-inspect/pkg/kubectl"
 )
 
-
 var (
 	borderStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
@@ -84,11 +83,8 @@ func (m Model) renderNormal() string {
 	// Bottom help bar
 	helpBar := m.renderHelpBar(innerWidth)
 
-	// Content area height: total - topBorder(1) - titleBar(1) - helpBar(helpH) - bottomBorder(1)
-	contentHeight := m.height - m.helpHeight() - 3
-	if contentHeight < 1 {
-		contentHeight = 1
-	}
+	// Content area height: total - topBorder(1) - titleBar(1) - helpBar - bottomBorder(1)
+	contentHeight := max(m.height-m.helpHeight()-3, 1)
 
 	leftWidth := int(float64(innerWidth-1) * m.leftRatio) // -1 for separator
 	rightWidth := innerWidth - 1 - leftWidth
@@ -105,8 +101,7 @@ func (m Model) renderNormal() string {
 }
 
 func (m Model) renderHelpBar(width int) string {
-	help := formatHelp()
-	return helpBarStyle.Width(width).Render(help)
+	return helpBarStyle.Width(width).Render(formatHelp())
 }
 
 func formatHelp() string {
@@ -134,10 +129,7 @@ func (m Model) renderTreePane(width, height int) string {
 	var lines []string
 
 	// Visible nodes in viewport
-	endIdx := m.treeScroll + height
-	if endIdx > len(m.visibleNodes) {
-		endIdx = len(m.visibleNodes)
-	}
+	endIdx := min(m.treeScroll+height, len(m.visibleNodes))
 
 	for i := m.treeScroll; i < endIdx; i++ {
 		node := m.visibleNodes[i]
@@ -155,7 +147,7 @@ func (m Model) renderTreePane(width, height int) string {
 }
 
 func (m Model) renderDetailPane(width, height int) string {
-	return RenderDetail(m.detailText, m.detailLoading, m.detailScroll, width, height)
+	return RenderDetail(m.detailText, m.detailLoading, m.detailScroll, m.detailLineCount, width, height)
 }
 
 func (m Model) renderSeparator(height int) string {
