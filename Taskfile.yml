@@ -5,6 +5,8 @@ vars:
   GOLANGCI_LINT_VERSION: 2.11.4
   TRIVY_VERSION: 0.69.3
   ACTIONLINT_VERSION: 1.7.12
+  KUBECTL_VERSION: 1.35.0
+  KIND_VERSION: 0.31.0
 
 tasks:
 
@@ -84,3 +86,27 @@ tasks:
       - actionlint:install
     cmds:
       - ./bin/actionlint .github/workflows/*.yaml
+
+  kind:install:
+    desc: Install kind
+    status:
+        - test -f ./bin/kind
+    cmds:
+        - GOOS=$(go env GOOS); GOARCH=$(go env GOARCH); curl -fsSL "https://github.com/kubernetes-sigs/kind/releases/download/v{{.KIND_VERSION}}/kind-${GOOS}-${GOARCH}" > ./bin/kind
+        - chmod +x ./bin/kind
+
+  kubectl:install:
+    desc: Install kubectl
+    status:
+         - test -f ./bin/kubectl
+    cmds:
+         - GOOS=$(go env GOOS); GOARCH=$(go env GOARCH); curl -fsSL "https://dl.k8s.io/release/v{{.KUBECTL_VERSION}}/bin/${GOOS}/${GOARCH}/kubectl" > ./bin/kubectl
+         - chmod +x ./bin/kubectl
+
+  integration:
+    desc: Run integration tests against kind clusters (multiple k8s versions)
+    deps:
+        - kind:install
+        - kubectl:install
+    cmds:
+        - PATH="{{.ROOT_DIR}}/bin:{{.PATH}}" go test -v -timeout 30m -tags=integration ./...
