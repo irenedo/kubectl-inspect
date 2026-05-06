@@ -3,7 +3,7 @@ kind: Plugin
 metadata:
   name: inspect
 spec:
-  version: {{ .TagName }} # This will be replaced with the actual version during release
+  version: {{ .TagName }}
   homepage: https://github.com/irenedo/kubectl-inspect
   shortDescription: Browse Kubernetes resources interactively with a TUI tree browser
   description: |
