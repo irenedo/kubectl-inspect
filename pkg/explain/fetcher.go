@@ -2,6 +2,7 @@ package explain
 
 import (
 	"context"
+	"sync"
 
 	"github.com/irenedo/kubectl-inspect/pkg/kubectl"
 )
@@ -9,6 +10,7 @@ import (
 // Fetcher runs kubectl explain for individual field paths.
 // It caches results by field path so revisiting a node is instant.
 type Fetcher struct {
+	mu       sync.RWMutex
 	executor kubectl.Executor
 	resource string
 	flags    kubectl.Flags
@@ -28,9 +30,12 @@ func NewFetcher(executor kubectl.Executor, resource string, flags kubectl.Flags)
 // FetchDetail fetches the explain output for a specific field path.
 // Results are cached for the lifetime of the Fetcher.
 func (f *Fetcher) FetchDetail(ctx context.Context, fieldPath string) DetailResult {
+	f.mu.RLock()
 	if cached, ok := f.cache[fieldPath]; ok {
+		f.mu.RUnlock()
 		return cached
 	}
+	f.mu.RUnlock()
 
 	var fullPath string
 	if fieldPath == "" {
@@ -44,6 +49,8 @@ func (f *Fetcher) FetchDetail(ctx context.Context, fieldPath string) DetailResul
 		RawOutput: output,
 		Err:       err,
 	}
+	f.mu.Lock()
 	f.cache[fieldPath] = result
+	f.mu.Unlock()
 	return result
 }
