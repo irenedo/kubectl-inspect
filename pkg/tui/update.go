@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"time"
+
 	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/irenedo/kubectl-inspect/pkg/explain"
@@ -363,10 +365,15 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 }
 
 // prepareFetchDetail marks the model as loading and returns a fetch command.
+// Fetches are debounced: rapid calls within 50ms are skipped.
 func (m *Model) prepareFetchDetail() tea.Cmd {
 	if len(m.visibleNodes) == 0 || m.cursor >= len(m.visibleNodes) {
 		return nil
 	}
+	if time.Since(m.lastFetchTime) < 50*time.Millisecond {
+		return nil
+	}
+	m.lastFetchTime = time.Now()
 	m.detailLoading = true
 	m.lastDetailPath = m.visibleNodes[m.cursor].Path
 	return m.fetchDetailCmd()

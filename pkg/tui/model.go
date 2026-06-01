@@ -53,6 +53,7 @@ type Model struct {
 	detailScroll    int
 	detailLoading   bool
 	lastDetailPath  string
+	lastFetchTime   time.Time
 
 	copiedPath string
 

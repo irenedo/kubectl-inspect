@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/irenedo/kubectl-inspect/pkg/explain"
@@ -149,6 +150,7 @@ func TestUpdate_ExpandCollapse(t *testing.T) {
 
 	// Collapse with left key
 	expandedCount := len(model.visibleNodes)
+	model.lastFetchTime = time.Time{} // reset debounce
 	updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyLeft})
 	model = updated.(Model)
 	if len(model.visibleNodes) >= expandedCount {
