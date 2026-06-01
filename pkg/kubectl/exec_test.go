@@ -85,6 +85,57 @@ func TestExecError_Error(t *testing.T) {
 	}
 }
 
+func TestExecError_Error_RedactsURLs(t *testing.T) {
+	err := &ExecError{Stderr: "dial tcp https://192.168.1.100:6443/connect: connection refused", ExitCode: 1}
+	msg := err.Error()
+	if strings.Contains(msg, "192.168.1.100") {
+		t.Errorf("expected IP to be redacted, got %q", msg)
+	}
+	if !strings.Contains(msg, "[REDACTED]") {
+		t.Errorf("expected redaction marker, got %q", msg)
+	}
+}
+
+func TestExecError_Error_RedactsInternalDNS(t *testing.T) {
+	err := &ExecError{Stderr: "dial tcp: lookup my-service.default.svc.cluster.local on 10.96.0.10:53", ExitCode: 1}
+	msg := err.Error()
+	if strings.Contains(msg, "my-service") {
+		t.Errorf("expected internal DNS to be redacted, got %q", msg)
+	}
+	if !strings.Contains(msg, "[REDACTED]") {
+		t.Errorf("expected redaction marker, got %q", msg)
+	}
+}
+
+func TestExecError_Error_RedactsBearerTokens(t *testing.T) {
+	//nolint:gosec // example JWT from RFC 7519, not a real credential
+	token := "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0"
+	err := &ExecError{Stderr: "Unauthorized: Bearer " + token, ExitCode: 1}
+	msg := err.Error()
+	if strings.Contains(msg, token) {
+		t.Errorf("expected bearer token to be redacted, got %q", msg)
+	}
+}
+
+func TestExecError_Error_PreservesNonSensitive(t *testing.T) {
+	err := &ExecError{Stderr: "the server doesn't have a resource type \"foo\"", ExitCode: 1}
+	msg := err.Error()
+	if !strings.Contains(msg, "the server doesn't have a resource type") {
+		t.Errorf("expected non-sensitive text to be preserved, got %q", msg)
+	}
+}
+
+func TestExecError_FriendlyMessage_RedactsURLs(t *testing.T) {
+	err := &ExecError{Stderr: "dial tcp 10.0.0.5:6443: connection refused", ExitCode: 1}
+	msg := err.FriendlyMessage()
+	if strings.Contains(msg, "10.0.0.5") {
+		t.Errorf("expected IP to be redacted in friendly message, got %q", msg)
+	}
+	if !strings.Contains(msg, "[REDACTED]") {
+		t.Errorf("expected redaction marker, got %q", msg)
+	}
+}
+
 func TestExecError_FriendlyMessage_UnknownResource(t *testing.T) {
 	err := &ExecError{Stderr: "the server doesn't have a resource type \"foo\"", ExitCode: 1}
 	msg := err.FriendlyMessage()
@@ -114,6 +165,17 @@ func TestExecError_FriendlyMessage_Default(t *testing.T) {
 	msg := err.FriendlyMessage()
 	if msg != "some other error" {
 		t.Errorf("expected raw stderr as default, got %q", msg)
+	}
+}
+
+func TestExecError_FriendlyMessage_Default_Redacts(t *testing.T) {
+	err := &ExecError{Stderr: "failed to get response from https://api.internal.example.com:443", ExitCode: 1}
+	msg := err.FriendlyMessage()
+	if strings.Contains(msg, "api.internal.example.com") {
+		t.Errorf("expected URL to be redacted in default friendly message, got %q", msg)
+	}
+	if !strings.Contains(msg, "[REDACTED]") {
+		t.Errorf("expected redaction marker, got %q", msg)
 	}
 }
 

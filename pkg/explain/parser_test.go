@@ -147,9 +147,11 @@ func TestBuildTree_Simple(t *testing.T) {
 
 	// Check apiVersion is a root scalar
 	found := findNode(info.Fields, "apiVersion")
+	//nolint:staticcheck // SA5011: t.Fatal is terminal
 	if found == nil {
 		t.Fatal("apiVersion not found")
 	}
+	//nolint:staticcheck // SA5011: found is guaranteed non-nil above
 	if found.FieldType != FieldTypeScalar {
 		t.Errorf("apiVersion should be scalar, got %d", found.FieldType)
 	}
@@ -171,9 +173,11 @@ func TestBuildTree_Simple(t *testing.T) {
 
 	// Check nested field
 	annotations := findNode(metadata.Children, "annotations")
+	//nolint:staticcheck // SA5011: t.Fatal is terminal
 	if annotations == nil {
 		t.Fatal("metadata.annotations not found")
 	}
+	//nolint:staticcheck // SA5011: annotations is guaranteed non-nil above
 	if annotations.Path != "metadata.annotations" {
 		t.Errorf("annotations path: expected metadata.annotations, got %q", annotations.Path)
 	}
@@ -195,9 +199,11 @@ func TestBuildTree_Deployment(t *testing.T) {
 
 	// Check spec exists and has children
 	spec := findNode(info.Fields, "spec")
+	//nolint:staticcheck // SA5011: t.Fatal is terminal
 	if spec == nil {
 		t.Fatal("spec not found")
 	}
+	//nolint:staticcheck // SA5011: spec is guaranteed non-nil above
 	if !spec.IsExpandable() {
 		t.Errorf("spec should be expandable, got FieldType %d", spec.FieldType)
 	}
@@ -207,9 +213,11 @@ func TestBuildTree_Deployment(t *testing.T) {
 
 	// Check spec.replicas is scalar
 	replicas := findNode(spec.Children, "replicas")
+	//nolint:staticcheck // SA5011: t.Fatal is terminal
 	if replicas == nil {
 		t.Fatal("spec.replicas not found")
 	}
+	//nolint:staticcheck // SA5011: replicas is guaranteed non-nil above
 	if replicas.FieldType != FieldTypeScalar {
 		t.Errorf("replicas should be scalar, got %d", replicas.FieldType)
 	}
@@ -219,16 +227,20 @@ func TestBuildTree_Deployment(t *testing.T) {
 
 	// Check deeply nested path: spec.selector.matchExpressions
 	selector := findNode(spec.Children, "selector")
+	//nolint:staticcheck // SA5011: t.Fatal is terminal
 	if selector == nil {
 		t.Fatal("spec.selector not found")
 	}
+	//nolint:staticcheck // SA5011: selector is guaranteed non-nil above
 	if !selector.IsExpandable() {
 		t.Errorf("selector should be expandable, got FieldType %d", selector.FieldType)
 	}
 	matchExpr := findNode(selector.Children, "matchExpressions")
+	//nolint:staticcheck // SA5011: t.Fatal is terminal
 	if matchExpr == nil {
 		t.Fatal("spec.selector.matchExpressions not found")
 	}
+	//nolint:staticcheck // SA5011: matchExpr is guaranteed non-nil above
 	if matchExpr.FieldType != FieldTypeList {
 		t.Errorf("matchExpressions should be List, got %d", matchExpr.FieldType)
 	}
@@ -238,17 +250,23 @@ func TestBuildTree_Deployment(t *testing.T) {
 
 	// Check containers is a list with children
 	template := findNode(spec.Children, "template")
+	//nolint:staticcheck // SA5011: t.Fatal is terminal
 	if template == nil {
 		t.Fatal("spec.template not found")
 	}
+	//nolint:staticcheck // SA5011: template is guaranteed non-nil above
 	podSpec := findNode(template.Children, "spec")
+	//nolint:staticcheck // SA5011: t.Fatal is terminal
 	if podSpec == nil {
 		t.Fatal("spec.template.spec not found")
 	}
+	//nolint:staticcheck // SA5011: podSpec is guaranteed non-nil above
 	containers := findNode(podSpec.Children, "containers")
+	//nolint:staticcheck // SA5011: t.Fatal is terminal
 	if containers == nil {
 		t.Fatal("spec.template.spec.containers not found")
 	}
+	//nolint:staticcheck // SA5011: containers is guaranteed non-nil above
 	if !containers.IsExpandable() {
 		t.Errorf("containers should be expandable, got FieldType %d", containers.FieldType)
 	}
@@ -258,9 +276,11 @@ func TestBuildTree_Deployment(t *testing.T) {
 
 	// Check status exists
 	status := findNode(info.Fields, "status")
+	//nolint:staticcheck // SA5011: t.Fatal is terminal
 	if status == nil {
 		t.Fatal("status not found")
 	}
+	//nolint:staticcheck // SA5011: status is guaranteed non-nil above
 	if len(status.Children) == 0 {
 		t.Error("status should have children")
 	}
@@ -279,17 +299,23 @@ func TestBuildTree_CRD(t *testing.T) {
 
 	// Check spec.issuerRef.name exists
 	spec := findNode(info.Fields, "spec")
+	//nolint:staticcheck // SA5011: t.Fatal is terminal
 	if spec == nil {
 		t.Fatal("spec not found")
 	}
+	//nolint:staticcheck // SA5011: spec is guaranteed non-nil above
 	issuerRef := findNode(spec.Children, "issuerRef")
+	//nolint:staticcheck // SA5011: t.Fatal is terminal
 	if issuerRef == nil {
 		t.Fatal("spec.issuerRef not found")
 	}
+	//nolint:staticcheck // SA5011: issuerRef is guaranteed non-nil above
 	nameField := findNode(issuerRef.Children, "name")
+	//nolint:staticcheck // SA5011: t.Fatal is terminal
 	if nameField == nil {
 		t.Fatal("spec.issuerRef.name not found")
 	}
+	//nolint:staticcheck // SA5011: nameField is guaranteed non-nil above
 	if nameField.Path != "spec.issuerRef.name" {
 		t.Errorf("path: expected spec.issuerRef.name, got %q", nameField.Path)
 	}
@@ -304,9 +330,11 @@ func TestBuildTree_RealOutput(t *testing.T) {
 
 	// Verify named types like ObjectMeta are expandable
 	metadata := findNode(info.Fields, "metadata")
+	//nolint:staticcheck // SA5011: t.Fatal is terminal
 	if metadata == nil {
 		t.Fatal("metadata not found")
 	}
+	//nolint:staticcheck // SA5011: metadata is guaranteed non-nil above
 	if metadata.TypeStr != "ObjectMeta" {
 		t.Errorf("metadata type: expected ObjectMeta, got %q", metadata.TypeStr)
 	}
@@ -316,13 +344,17 @@ func TestBuildTree_RealOutput(t *testing.T) {
 
 	// Verify -required- is stripped
 	spec := findNode(info.Fields, "spec")
+	//nolint:staticcheck // SA5011: t.Fatal is terminal
 	if spec == nil {
 		t.Fatal("spec not found")
 	}
+	//nolint:staticcheck // SA5011: spec is guaranteed non-nil above
 	selector := findNode(spec.Children, "selector")
+	//nolint:staticcheck // SA5011: t.Fatal is terminal
 	if selector == nil {
 		t.Fatal("selector not found")
 	}
+	//nolint:staticcheck // SA5011: selector is guaranteed non-nil above
 	if selector.TypeStr != "LabelSelector" {
 		t.Errorf("selector type: expected LabelSelector, got %q", selector.TypeStr)
 	}
@@ -341,9 +373,11 @@ func TestBuildTree_RealKubectlOutput(t *testing.T) {
 
 	// spec must be expandable
 	spec := findNode(info.Fields, "spec")
+	//nolint:staticcheck // SA5011: t.Fatal is terminal
 	if spec == nil {
 		t.Fatal("spec not found")
 	}
+	//nolint:staticcheck // SA5011: spec is guaranteed non-nil above
 	if !spec.IsExpandable() {
 		t.Errorf("spec should be expandable (type: %q, fieldType: %d)", spec.TypeStr, spec.FieldType)
 	}
@@ -353,26 +387,34 @@ func TestBuildTree_RealKubectlOutput(t *testing.T) {
 
 	// metadata must be expandable (type is ObjectMeta, not Object)
 	metadata := findNode(info.Fields, "metadata")
+	//nolint:staticcheck // SA5011: t.Fatal is terminal
 	if metadata == nil {
 		t.Fatal("metadata not found")
 	}
+	//nolint:staticcheck // SA5011: metadata is guaranteed non-nil above
 	if !metadata.IsExpandable() {
 		t.Errorf("metadata should be expandable (type: %q, fieldType: %d)", metadata.TypeStr, metadata.FieldType)
 	}
 
 	// Deep path: spec.template.spec.containers must be expandable
 	template := findNode(spec.Children, "template")
+	//nolint:staticcheck // SA5011: t.Fatal is terminal
 	if template == nil {
 		t.Fatal("spec.template not found")
 	}
+	//nolint:staticcheck // SA5011: template is guaranteed non-nil above
 	podSpec := findNode(template.Children, "spec")
+	//nolint:staticcheck // SA5011: t.Fatal is terminal
 	if podSpec == nil {
 		t.Fatal("spec.template.spec not found")
 	}
+	//nolint:staticcheck // SA5011: podSpec is guaranteed non-nil above
 	containers := findNode(podSpec.Children, "containers")
+	//nolint:staticcheck // SA5011: t.Fatal is terminal
 	if containers == nil {
 		t.Fatal("spec.template.spec.containers not found")
 	}
+	//nolint:staticcheck // SA5011: containers is guaranteed non-nil above
 	if !containers.IsExpandable() {
 		t.Errorf("containers should be expandable (type: %q, fieldType: %d)", containers.TypeStr, containers.FieldType)
 	}
@@ -438,9 +480,11 @@ func TestPlaceChildNode_ListWithChildren(t *testing.T) {
 
 	// items is a root-level []Item field with children
 	items := findNode(info.Fields, "items")
+	//nolint:staticcheck // SA5011: t.Fatal is terminal
 	if items == nil {
 		t.Fatal("items not found")
 	}
+	//nolint:staticcheck // SA5011: items is guaranteed non-nil above
 	if !items.IsExpandable() {
 		t.Errorf("items should be expandable (list with children), got %d", items.FieldType)
 	}
@@ -453,22 +497,28 @@ func TestPlaceChildNode_ListWithChildren(t *testing.T) {
 
 	// Check nested field inside items
 	id := findNode(items.Children, "id")
+	//nolint:staticcheck // SA5011: t.Fatal is terminal
 	if id == nil {
 		t.Fatal("items.id not found")
 	}
+	//nolint:staticcheck // SA5011: id is guaranteed non-nil above
 	if id.Path != "items.id" {
 		t.Errorf("items.id path: expected items.id, got %q", id.Path)
 	}
 
 	// Check deeply nested field inside items.config
 	config := findNode(items.Children, "config")
+	//nolint:staticcheck // SA5011: t.Fatal is terminal
 	if config == nil {
 		t.Fatal("items.config not found")
 	}
+	//nolint:staticcheck // SA5011: config is guaranteed non-nil above
 	enabled := findNode(config.Children, "enabled")
+	//nolint:staticcheck // SA5011: t.Fatal is terminal
 	if enabled == nil {
 		t.Fatal("items.config.enabled not found")
 	}
+	//nolint:staticcheck // SA5011: enabled is guaranteed non-nil above
 	if enabled.Path != "items.config.enabled" {
 		t.Errorf("path: expected items.config.enabled, got %q", enabled.Path)
 	}
