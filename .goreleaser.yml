@@ -8,6 +8,8 @@ builds:
     binary: kubectl-inspect
     env:
       - CGO_ENABLED=0
+    ldflags:
+      - -X main.version={{.Version}}
     goos:
       - linux
       - darwin

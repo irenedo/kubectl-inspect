@@ -2,6 +2,8 @@ version: '3'
 
 vars:
   BINARY: kubectl-inspect
+  VERSION:
+    sh: git describe --tags --always 2>/dev/null || echo "dev"
   GOLANGCI_LINT_VERSION: 2.11.4
   TRIVY_VERSION: 0.69.3
   ACTIONLINT_VERSION: 1.7.12
@@ -13,7 +15,7 @@ tasks:
   build:
     desc: Build the binary
     cmds:
-      - go build -o {{.BINARY}} .
+      - go build -ldflags "-X main.version={{.VERSION}}" -o {{.BINARY}} .
 
   test:
     desc: Run all tests
@@ -29,7 +31,7 @@ tasks:
   install:
     desc: Build and install to GOPATH/bin
     cmds:
-      - go build -o {{.BINARY}} .
+      - go build -ldflags "-X main.version={{.VERSION}}" -o {{.BINARY}} .
       - mv {{.BINARY}} $(go env GOPATH)/bin/
 
   clean:
