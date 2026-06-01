@@ -776,9 +776,6 @@ func TestUpdate_MouseClickYCoordinateMapping(t *testing.T) {
 	m, _ := newTestModel(t)
 	m = loadTree(t, m)
 
-	// Write View output to a file for analysis
-	// (os removed — no longer needed)
-
 	// Verify Y coordinates for all visible rows (only rows with actual nodes)
 	// The content starts at Y=2 (after border at Y=0 and title bar at Y=1)
 	// Each visible node at index i is at screen Y = 2 + i
@@ -1162,6 +1159,7 @@ func TestUpdate_collapseParent_MovesCursor(t *testing.T) {
 	}
 
 	parent := m.visibleNodes[childIdx].Parent
+	//nolint:staticcheck // SA5011 // t.Fatal is a terminal function, so parent is guaranteed to be non-nil here
 	if parent == nil {
 		t.Fatal("child node has no parent")
 	}
@@ -1173,6 +1171,7 @@ func TestUpdate_collapseParent_MovesCursor(t *testing.T) {
 	model := updated.(Model)
 
 	// Parent should be collapsed
+	//nolint:staticcheck // SA5011 // parent is guaranteed non-nil by the check above
 	if parent.Expanded {
 		t.Error("expected parent to be collapsed")
 	}
@@ -1765,4 +1764,32 @@ func TestMouseClick_NarrowWidthHelpWrapping2Lines(t *testing.T) {
 			t.Errorf("click at Y=%d (node %d): expected cursor=%d, got %d", y, i, i, model.cursor)
 		}
 	}
+}
+
+func TestPrepareFetchDetail_EmptyVisibleNodes(t *testing.T) {
+	m := NewModel("exampleconfig", &testutil.MockExecutor{}, kubectl.Flags{})
+	// visibleNodes is nil, cursor is 0
+
+	cmd := m.prepareFetchDetail()
+	if cmd != nil {
+		t.Error("expected nil cmd when visibleNodes is empty, got non-nil")
+	}
+	if m.detailLoading {
+		t.Error("expected detailLoading to remain false when no nodes")
+	}
+}
+
+func TestPrepareFetchDetail_CursorOutOfBounds(t *testing.T) {
+	m, _ := newTestModel(t)
+	m = loadTree(t, m)
+	m.cursor = 9999 // far beyond visibleNodes length
+
+	t.Logf("visibleNodes=%d, cursor=%d", len(m.visibleNodes), m.cursor)
+
+	cmd := m.prepareFetchDetail()
+	if cmd != nil {
+		t.Error("expected nil cmd when cursor is out of bounds, got non-nil")
+	}
+	// Guard should return early without mutating detailLoading.
+	// detailLoading retains its pre-call value (set by loadTree's treeLoadedMsg).
 }

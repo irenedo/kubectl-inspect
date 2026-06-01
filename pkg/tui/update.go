@@ -373,6 +373,9 @@ func (m *Model) clearCopied() {
 
 // prepareFetchDetail marks the model as loading and returns a fetch command.
 func (m *Model) prepareFetchDetail() tea.Cmd {
+	if len(m.visibleNodes) == 0 || m.cursor >= len(m.visibleNodes) {
+		return nil
+	}
 	m.detailLoading = true
 	m.lastDetailPath = m.visibleNodes[m.cursor].Path
 	return m.fetchDetailCmd()
