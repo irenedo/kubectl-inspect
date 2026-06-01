@@ -169,7 +169,6 @@ func (m Model) handleWheelUp() (tea.Model, tea.Cmd) {
 	case focusedPaneTree:
 		if m.cursor > 0 {
 			m.cursor--
-			m.clearCopied()
 			m.ensureCursorVisible()
 			cmd := m.prepareFetchDetail()
 			return m, cmd
@@ -185,7 +184,6 @@ func (m Model) handleWheelDown() (tea.Model, tea.Cmd) {
 	case focusedPaneTree:
 		if m.cursor < len(m.visibleNodes)-1 {
 			m.cursor++
-			m.clearCopied()
 			m.ensureCursorVisible()
 			cmd := m.prepareFetchDetail()
 			return m, cmd
@@ -226,7 +224,6 @@ func (m Model) handleTreeClick(y, contentStartRow int) (tea.Model, tea.Cmd) {
 		m.toggleClickExpand(node)
 	}
 
-	m.clearCopied()
 	cmd := m.prepareFetchDetail()
 	return m, cmd
 }
@@ -252,9 +249,8 @@ func (m Model) guardTree() bool {
 	return len(m.visibleNodes) == 0 || m.cursor >= len(m.visibleNodes)
 }
 
-// navigateTree resets copied path and returns a detail fetch command.
+// navigateTree returns a detail fetch command.
 func (m *Model) navigateTree() tea.Cmd {
-	m.clearCopied()
 	m.ensureCursorVisible()
 	return m.prepareFetchDetail()
 }
@@ -364,11 +360,6 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
-}
-
-// clearCopied resets the copied path feedback.
-func (m *Model) clearCopied() {
-	m.copiedPath = ""
 }
 
 // prepareFetchDetail marks the model as loading and returns a fetch command.

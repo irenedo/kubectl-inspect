@@ -502,16 +502,16 @@ func TestUpdate_EscOnRootLeafNoOp(t *testing.T) {
 	testutil.ExpectNoCmd(t, cmd)
 }
 
-func TestUpdate_CursorMoveClearsCopiedPath(t *testing.T) {
+func TestUpdate_CursorMovePreservesCopiedPath(t *testing.T) {
 	m, _ := newTestModel(t)
 	m = loadTree(t, m)
 	m.copiedPath = "some.path"
 
-	// Move down should clear copiedPath
+	// Move down should preserve copiedPath
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
 	model := updated.(Model)
-	if model.copiedPath != "" {
-		t.Error("expected copiedPath to be cleared after cursor down")
+	if model.copiedPath != "some.path" {
+		t.Errorf("expected copiedPath to persist after cursor down, got %q", model.copiedPath)
 	}
 
 	// Reset and test cursor up
@@ -519,8 +519,8 @@ func TestUpdate_CursorMoveClearsCopiedPath(t *testing.T) {
 	model.cursor = 1
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyUp})
 	model = updated.(Model)
-	if model.copiedPath != "" {
-		t.Error("expected copiedPath to be cleared after cursor up")
+	if model.copiedPath != "another.path" {
+		t.Errorf("expected copiedPath to persist after cursor up, got %q", model.copiedPath)
 	}
 }
 
