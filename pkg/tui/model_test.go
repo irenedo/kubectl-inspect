@@ -1821,3 +1821,33 @@ func TestPrepareFetchDetail_CursorOutOfBounds(t *testing.T) {
 	// Guard should return early without mutating detailLoading.
 	// detailLoading retains its pre-call value (set by loadTree's treeLoadedMsg).
 }
+
+func TestRenderLoading_ContainsHint(t *testing.T) {
+	m := NewModel("exampleconfig", &testutil.MockExecutor{}, kubectl.Flags{})
+	m.width = 120
+	m.height = 40
+	m.detailLoading = true
+
+	output := m.renderLoading()
+	if !strings.Contains(output, "Loading...") {
+		t.Error("expected 'Loading...' in renderLoading output")
+	}
+	if !strings.Contains(output, "large CRDs") {
+		t.Error("expected 'large CRDs' hint in renderLoading output")
+	}
+}
+
+func TestRenderLoading_NarrowWidthNoHint(t *testing.T) {
+	m := NewModel("exampleconfig", &testutil.MockExecutor{}, kubectl.Flags{})
+	m.width = 30
+	m.height = 40
+	m.detailLoading = true
+
+	output := m.renderLoading()
+	if !strings.Contains(output, "Loading...") {
+		t.Error("expected 'Loading...' in renderLoading output")
+	}
+	if strings.Contains(output, "large CRDs") {
+		t.Error("expected no 'large CRDs' hint at narrow width (<=35)")
+	}
+}

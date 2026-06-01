@@ -65,8 +65,12 @@ func (m Model) renderError() string {
 }
 
 func (m Model) renderLoading() string {
+	msg := "Loading..."
+	if m.width > 35 {
+		msg += " (this may take a moment for large CRDs)"
+	}
 	return borderStyle.Width(m.width - 2).Height(m.height - 2).Render(
-		centerText("Loading...", m.width-4, m.height-4),
+		centerText(msg, m.width-4, m.height-4),
 	)
 }
 
