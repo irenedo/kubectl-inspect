@@ -1582,6 +1582,32 @@ func TestUpdate_TabFromDetailToTree(t *testing.T) {
 	}
 }
 
+func TestUpdate_TabFromTreeToDetail(t *testing.T) {
+	m, _ := newTestModel(t)
+	m.focusedPane = focusedPaneTree
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model := updated.(Model)
+	if model.focusedPane != focusedPaneDetail {
+		t.Errorf("expected focusedPane to switch to detail, got %q", model.focusedPane)
+	}
+}
+
+func TestRenderHelpBar_FocusPaneKey(t *testing.T) {
+	m := NewModel("pod", &testutil.MockExecutor{}, kubectl.Flags{})
+	m.width = 120
+	m.height = 40
+	m = loadTree(t, m)
+
+	help := m.renderHelpBar(m.width)
+	if !strings.Contains(help, "Tab") {
+		t.Error("expected help bar to mention 'Tab' for focus pane")
+	}
+	if strings.Contains(help, "Shift-Tab") {
+		t.Error("help bar should not mention Shift-Tab (it's not handled)")
+	}
+}
+
 func TestUpdate_LeftOnCollapsedNoParent(t *testing.T) {
 	m, _ := newTestModel(t)
 	m = loadTree(t, m)
