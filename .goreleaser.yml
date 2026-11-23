@@ -21,6 +21,14 @@ builds:
       - goos: windows
         goarch: arm64
 
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+
 archives:
   - ids:
       - kubectl-inspect

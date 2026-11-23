@@ -4,7 +4,7 @@ vars:
   BINARY: kubectl-inspect
   VERSION:
     sh: git describe --tags --always 2>/dev/null || echo "dev"
-  GOLANGCI_LINT_VERSION: 2.11.4
+  GOLANGCI_LINT_VERSION: 2.15.0
   TRIVY_VERSION: 0.69.3
   ACTIONLINT_VERSION: 1.7.12
   KUBECTL_VERSION: 1.35.0
@@ -66,11 +66,16 @@ tasks:
       - curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b ./bin v{{.TRIVY_VERSION}}
 
   trivy:
-    desc: Check for vulnerabilities in dependencies
+    desc: Fail on known vulnerabilities in dependencies
     deps:
       - trivy:install
     cmds:
-      - ./bin/trivy fs go.mod
+      # --exit-code 1 makes this a real gate: non-zero exit when CVEs are found.
+      # Binary scanning is intentionally absent: trivy 0.69 cannot detect Go
+      # binaries in fs/rootfs mode (it reports "no language-specific files"
+      # for a binary that has full build info). go.mod is the source of truth
+      # instead, since the binary is built from exactly these module versions.
+      - ./bin/trivy fs --exit-code 1 --scanners vuln go.mod
 
   check:
     desc: Run all checks before publishing (lint, test, trivy, workflow lint, security scan)
