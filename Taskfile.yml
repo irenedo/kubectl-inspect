@@ -22,6 +22,11 @@ tasks:
     cmds:
       - go test ./... -v
 
+  bench:
+    desc: Run benchmark tests
+    cmds:
+       - go test ./... -bench=. -benchmem -count=3
+
   test-cover:
     desc: Run tests with coverage
     cmds:
