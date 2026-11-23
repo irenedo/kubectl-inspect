@@ -102,20 +102,18 @@ func parseFieldLine(line string) (name, typeStr string, leadingSpaces int, err e
 		return "", "", 0, fmt.Errorf("empty field name in line: %q", line)
 	}
 
-	if len(parts) > 1 {
-		raw := strings.TrimSpace(parts[1])
-		// Remove -required- suffix (may be outside or inside angle brackets)
-		raw = strings.TrimSuffix(raw, " -required-")
-		raw = strings.TrimSuffix(raw, "-required-")
-		raw = strings.TrimSpace(raw)
-		// Remove angle brackets
-		raw = strings.TrimPrefix(raw, "<")
-		raw = strings.TrimSuffix(raw, ">")
-		// Also handle -required inside brackets: <string> -required-  already handled above,
-		// but also <string -required> which shouldn't happen but be safe
-		raw = strings.TrimSuffix(raw, " -required")
-		typeStr = strings.TrimSpace(raw)
-	}
+	raw := strings.TrimSpace(parts[1])
+	// Remove -required- suffix (may be outside or inside angle brackets)
+	raw = strings.TrimSuffix(raw, " -required-")
+	raw = strings.TrimSuffix(raw, "-required-")
+	raw = strings.TrimSpace(raw)
+	// Remove angle brackets
+	raw = strings.TrimPrefix(raw, "<")
+	raw = strings.TrimSuffix(raw, ">")
+	// Also handle -required inside brackets: <string> -required-  already handled above,
+	// but also <string -required> which shouldn't happen but be safe
+	raw = strings.TrimSuffix(raw, " -required")
+	typeStr = strings.TrimSpace(raw)
 
 	return name, typeStr, leadingSpaces, nil
 }

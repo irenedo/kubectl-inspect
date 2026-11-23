@@ -13,13 +13,16 @@ import (
 	"github.com/irenedo/kubectl-inspect/pkg/tui"
 )
 
+// version is set by -ldflags at build time: -ldflags "-X main.version=v1.2.3"
+var version = "dev"
+
 func main() {
 	var flags kubectl.Flags
 
 	binaryName := filepath.Base(os.Args[0])
 	var displayName string
-	if strings.HasPrefix(binaryName, "kubectl-") {
-		displayName = "kubectl " + strings.TrimPrefix(binaryName, "kubectl-")
+	if name, ok := strings.CutPrefix(binaryName, "kubectl-"); ok {
+		displayName = "kubectl " + name
 	} else {
 		displayName = binaryName
 	}
@@ -31,6 +34,7 @@ func main() {
 		Long:    "An interactive terminal UI for browsing Kubernetes resource and CRD field structures using kubectl explain.",
 		Example: example,
 		Args:    cobra.ExactArgs(1),
+		Version: version,
 		RunE: func(_ *cobra.Command, args []string) error {
 			resource := args[0]
 			executor := kubectl.NewRealExecutor()
@@ -43,6 +47,7 @@ func main() {
 			return nil
 		},
 	}
+	cmd.SetVersionTemplate(fmt.Sprintf("%s %s\n", displayName, "{{.Version}}"))
 
 	cmd.Flags().StringVar(&flags.Kubeconfig, "kubeconfig", "", "Path to kubeconfig file")
 	cmd.Flags().StringVar(&flags.Context, "context", "", "Kubernetes context to use")

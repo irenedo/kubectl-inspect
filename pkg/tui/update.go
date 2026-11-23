@@ -1,9 +1,12 @@
 package tui
 
 import (
+	"time"
+
 	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/irenedo/kubectl-inspect/pkg/explain"
+	"github.com/mattn/go-runewidth"
 )
 
 // Update handles messages and returns the updated model and any commands.
@@ -169,7 +172,6 @@ func (m Model) handleWheelUp() (tea.Model, tea.Cmd) {
 	case focusedPaneTree:
 		if m.cursor > 0 {
 			m.cursor--
-			m.clearCopied()
 			m.ensureCursorVisible()
 			cmd := m.prepareFetchDetail()
 			return m, cmd
@@ -185,7 +187,6 @@ func (m Model) handleWheelDown() (tea.Model, tea.Cmd) {
 	case focusedPaneTree:
 		if m.cursor < len(m.visibleNodes)-1 {
 			m.cursor++
-			m.clearCopied()
 			m.ensureCursorVisible()
 			cmd := m.prepareFetchDetail()
 			return m, cmd
@@ -226,7 +227,6 @@ func (m Model) handleTreeClick(y, contentStartRow int) (tea.Model, tea.Cmd) {
 		m.toggleClickExpand(node)
 	}
 
-	m.clearCopied()
 	cmd := m.prepareFetchDetail()
 	return m, cmd
 }
@@ -252,9 +252,8 @@ func (m Model) guardTree() bool {
 	return len(m.visibleNodes) == 0 || m.cursor >= len(m.visibleNodes)
 }
 
-// navigateTree resets copied path and returns a detail fetch command.
+// navigateTree returns a detail fetch command.
 func (m *Model) navigateTree() tea.Cmd {
-	m.clearCopied()
 	m.ensureCursorVisible()
 	return m.prepareFetchDetail()
 }
@@ -366,13 +365,16 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// clearCopied resets the copied path feedback.
-func (m *Model) clearCopied() {
-	m.copiedPath = ""
-}
-
 // prepareFetchDetail marks the model as loading and returns a fetch command.
+// Fetches are debounced: rapid calls within 50ms are skipped.
 func (m *Model) prepareFetchDetail() tea.Cmd {
+	if len(m.visibleNodes) == 0 || m.cursor >= len(m.visibleNodes) {
+		return nil
+	}
+	if time.Since(m.lastFetchTime) < 50*time.Millisecond {
+		return nil
+	}
+	m.lastFetchTime = time.Now()
 	m.detailLoading = true
 	m.lastDetailPath = m.visibleNodes[m.cursor].Path
 	return m.fetchDetailCmd()
@@ -417,6 +419,6 @@ func (m Model) helpHeight() int {
 	if w <= 0 {
 		return 1
 	}
-	help := formatHelp()
-	return max((len(help)+w-1)/w, 1)
+	help := plainHelpText()
+	return max((runewidth.StringWidth(help)+w-1)/w, 1)
 }

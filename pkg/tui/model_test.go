@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/irenedo/kubectl-inspect/pkg/explain"
@@ -149,6 +150,7 @@ func TestUpdate_ExpandCollapse(t *testing.T) {
 
 	// Collapse with left key
 	expandedCount := len(model.visibleNodes)
+	model.lastFetchTime = time.Time{} // reset debounce
 	updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyLeft})
 	model = updated.(Model)
 	if len(model.visibleNodes) >= expandedCount {
@@ -502,16 +504,16 @@ func TestUpdate_EscOnRootLeafNoOp(t *testing.T) {
 	testutil.ExpectNoCmd(t, cmd)
 }
 
-func TestUpdate_CursorMoveClearsCopiedPath(t *testing.T) {
+func TestUpdate_CursorMovePreservesCopiedPath(t *testing.T) {
 	m, _ := newTestModel(t)
 	m = loadTree(t, m)
 	m.copiedPath = "some.path"
 
-	// Move down should clear copiedPath
+	// Move down should preserve copiedPath
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
 	model := updated.(Model)
-	if model.copiedPath != "" {
-		t.Error("expected copiedPath to be cleared after cursor down")
+	if model.copiedPath != "some.path" {
+		t.Errorf("expected copiedPath to persist after cursor down, got %q", model.copiedPath)
 	}
 
 	// Reset and test cursor up
@@ -519,8 +521,8 @@ func TestUpdate_CursorMoveClearsCopiedPath(t *testing.T) {
 	model.cursor = 1
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyUp})
 	model = updated.(Model)
-	if model.copiedPath != "" {
-		t.Error("expected copiedPath to be cleared after cursor up")
+	if model.copiedPath != "another.path" {
+		t.Errorf("expected copiedPath to persist after cursor up, got %q", model.copiedPath)
 	}
 }
 
@@ -775,9 +777,6 @@ func TestUpdate_MouseClickOnFirstRow(t *testing.T) {
 func TestUpdate_MouseClickYCoordinateMapping(t *testing.T) {
 	m, _ := newTestModel(t)
 	m = loadTree(t, m)
-
-	// Write View output to a file for analysis
-	// (os removed — no longer needed)
 
 	// Verify Y coordinates for all visible rows (only rows with actual nodes)
 	// The content starts at Y=2 (after border at Y=0 and title bar at Y=1)
@@ -1162,6 +1161,7 @@ func TestUpdate_collapseParent_MovesCursor(t *testing.T) {
 	}
 
 	parent := m.visibleNodes[childIdx].Parent
+	//nolint:staticcheck // SA5011 // t.Fatal is a terminal function, so parent is guaranteed to be non-nil here
 	if parent == nil {
 		t.Fatal("child node has no parent")
 	}
@@ -1173,6 +1173,7 @@ func TestUpdate_collapseParent_MovesCursor(t *testing.T) {
 	model := updated.(Model)
 
 	// Parent should be collapsed
+	//nolint:staticcheck // SA5011 // parent is guaranteed non-nil by the check above
 	if parent.Expanded {
 		t.Error("expected parent to be collapsed")
 	}
@@ -1583,6 +1584,32 @@ func TestUpdate_TabFromDetailToTree(t *testing.T) {
 	}
 }
 
+func TestUpdate_TabFromTreeToDetail(t *testing.T) {
+	m, _ := newTestModel(t)
+	m.focusedPane = focusedPaneTree
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model := updated.(Model)
+	if model.focusedPane != focusedPaneDetail {
+		t.Errorf("expected focusedPane to switch to detail, got %q", model.focusedPane)
+	}
+}
+
+func TestRenderHelpBar_FocusPaneKey(t *testing.T) {
+	m := NewModel("pod", &testutil.MockExecutor{}, kubectl.Flags{})
+	m.width = 120
+	m.height = 40
+	m = loadTree(t, m)
+
+	help := m.renderHelpBar(m.width)
+	if !strings.Contains(help, "Tab") {
+		t.Error("expected help bar to mention 'Tab' for focus pane")
+	}
+	if strings.Contains(help, "Shift-Tab") {
+		t.Error("help bar should not mention Shift-Tab (it's not handled)")
+	}
+}
+
 func TestUpdate_LeftOnCollapsedNoParent(t *testing.T) {
 	m, _ := newTestModel(t)
 	m = loadTree(t, m)
@@ -1764,5 +1791,63 @@ func TestMouseClick_NarrowWidthHelpWrapping2Lines(t *testing.T) {
 		if model.cursor != i {
 			t.Errorf("click at Y=%d (node %d): expected cursor=%d, got %d", y, i, i, model.cursor)
 		}
+	}
+}
+
+func TestPrepareFetchDetail_EmptyVisibleNodes(t *testing.T) {
+	m := NewModel("exampleconfig", &testutil.MockExecutor{}, kubectl.Flags{})
+	// visibleNodes is nil, cursor is 0
+
+	cmd := m.prepareFetchDetail()
+	if cmd != nil {
+		t.Error("expected nil cmd when visibleNodes is empty, got non-nil")
+	}
+	if m.detailLoading {
+		t.Error("expected detailLoading to remain false when no nodes")
+	}
+}
+
+func TestPrepareFetchDetail_CursorOutOfBounds(t *testing.T) {
+	m, _ := newTestModel(t)
+	m = loadTree(t, m)
+	m.cursor = 9999 // far beyond visibleNodes length
+
+	t.Logf("visibleNodes=%d, cursor=%d", len(m.visibleNodes), m.cursor)
+
+	cmd := m.prepareFetchDetail()
+	if cmd != nil {
+		t.Error("expected nil cmd when cursor is out of bounds, got non-nil")
+	}
+	// Guard should return early without mutating detailLoading.
+	// detailLoading retains its pre-call value (set by loadTree's treeLoadedMsg).
+}
+
+func TestRenderLoading_ContainsHint(t *testing.T) {
+	m := NewModel("exampleconfig", &testutil.MockExecutor{}, kubectl.Flags{})
+	m.width = 120
+	m.height = 40
+	m.detailLoading = true
+
+	output := m.renderLoading()
+	if !strings.Contains(output, "Loading...") {
+		t.Error("expected 'Loading...' in renderLoading output")
+	}
+	if !strings.Contains(output, "large CRDs") {
+		t.Error("expected 'large CRDs' hint in renderLoading output")
+	}
+}
+
+func TestRenderLoading_NarrowWidthNoHint(t *testing.T) {
+	m := NewModel("exampleconfig", &testutil.MockExecutor{}, kubectl.Flags{})
+	m.width = 30
+	m.height = 40
+	m.detailLoading = true
+
+	output := m.renderLoading()
+	if !strings.Contains(output, "Loading...") {
+		t.Error("expected 'Loading...' in renderLoading output")
+	}
+	if strings.Contains(output, "large CRDs") {
+		t.Error("expected no 'large CRDs' hint at narrow width (<=35)")
 	}
 }

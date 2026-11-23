@@ -65,8 +65,12 @@ func (m Model) renderError() string {
 }
 
 func (m Model) renderLoading() string {
+	msg := "Loading..."
+	if m.width > 35 {
+		msg += " (this may take a moment for large CRDs)"
+	}
 	return borderStyle.Width(m.width - 2).Height(m.height - 2).Render(
-		centerText("Loading...", m.width-4, m.height-4),
+		centerText(msg, m.width-4, m.height-4),
 	)
 }
 
@@ -104,25 +108,40 @@ func (m Model) renderHelpBar(width int) string {
 	return helpBarStyle.Width(width).Render(formatHelp())
 }
 
-func formatHelp() string {
-	keys := []struct {
-		key  string
-		desc string
-	}{
-		{"↑/↓", "navigate"},
-		{"←/→", "expand/collapse"},
-		{"Tab/Shift-Tab", "focus pane"},
-		{"Enter", "copy path"},
-		{"PgUp/PgDn", "scroll detail"},
-		{"q/Q", "quit"},
-	}
+// helpKey is a single keybinding entry shown in the help bar.
+type helpKey struct {
+	key  string
+	desc string
+}
 
+// helpKeys is the single source of truth for the help bar entries,
+// shared by the styled bar and the width calculation.
+var helpKeys = []helpKey{
+	{"↑/↓", "navigate"},
+	{"←/→", "expand/collapse"},
+	{"Tab", "focus pane"},
+	{"Enter", "copy path"},
+	{"PgUp/PgDn", "scroll detail"},
+	{"q/Q", "quit"},
+}
+
+func formatHelp() string {
 	sep := helpSepStyle.Render(" • ")
-	parts := make([]string, len(keys))
-	for i, k := range keys {
+	parts := make([]string, len(helpKeys))
+	for i, k := range helpKeys {
 		parts[i] = helpKeyStyle.Render(k.key) + " " + k.desc
 	}
 	return strings.Join(parts, sep)
+}
+
+// plainHelpText returns the help text without any lipgloss styling,
+// for use in layout calculations where ANSI codes would skew width.
+func plainHelpText() string {
+	parts := make([]string, len(helpKeys))
+	for i, k := range helpKeys {
+		parts[i] = k.key + " " + k.desc
+	}
+	return strings.Join(parts, " • ")
 }
 
 func (m Model) renderTreePane(width, height int) string {

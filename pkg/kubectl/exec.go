@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"strings"
 )
 
@@ -42,22 +43,39 @@ type ExecError struct {
 }
 
 func (e *ExecError) Error() string {
-	return fmt.Sprintf("kubectl exited with code %d: %s", e.ExitCode, e.Stderr)
+	return fmt.Sprintf("kubectl exited with code %d: %s", e.ExitCode, sanitizeForDisplay(e.Stderr))
 }
 
 // FriendlyMessage returns a user-facing message for known error patterns.
 func (e *ExecError) FriendlyMessage() string {
-	stderr := strings.ToLower(e.Stderr)
+	stderr := sanitizeForDisplay(e.Stderr)
+	lower := strings.ToLower(stderr)
 	switch {
-	case strings.Contains(stderr, "the server doesn't have a resource type"):
-		return fmt.Sprintf("Unknown resource type. Run `kubectl api-resources` to see available types.\n\n%s", e.Stderr)
-	case strings.Contains(stderr, "connection refused"):
-		return fmt.Sprintf("Cannot connect to Kubernetes API server. Check your kubeconfig.\n\n%s", e.Stderr)
-	case strings.Contains(stderr, "unable to connect"):
-		return fmt.Sprintf("Cannot connect to Kubernetes API server. Check your kubeconfig.\n\n%s", e.Stderr)
+	case strings.Contains(lower, "the server doesn't have a resource type"):
+		return fmt.Sprintf("Unknown resource type. Run `kubectl api-resources` to see available types.\n\n%s", stderr)
+	case strings.Contains(lower, "connection refused"):
+		return fmt.Sprintf("Cannot connect to Kubernetes API server. Check your kubeconfig.\n\n%s", stderr)
+	case strings.Contains(lower, "unable to connect"):
+		return fmt.Sprintf("Cannot connect to Kubernetes API server. Check your kubeconfig.\n\n%s", stderr)
 	default:
-		return e.Stderr
+		return stderr
 	}
+}
+
+// sanitizeForDisplay redacts infrastructure-sensitive patterns from kubectl stderr.
+// It removes URLs, IP:port patterns, internal DNS names, and bearer tokens.
+var sanitizeRe = regexp.MustCompile(
+	`https?://[^\s"'<>\)]+` + // URLs
+		`|` +
+		`\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+` + // IP:port
+		`|` +
+		`\b[a-z0-9][a-z0-9\-]*(\.[a-z0-9][a-z0-9\-]*)*\.(svc|cluster)\.(local|local\.\d+)` + // internal DNS
+		`|` +
+		`Bearer\s+[A-Za-z0-9\-._~+/]+=*`, // bearer tokens
+)
+
+func sanitizeForDisplay(s string) string {
+	return sanitizeRe.ReplaceAllString(s, "[REDACTED]")
 }
 
 // RealExecutor shells out to kubectl.
