@@ -139,29 +139,42 @@ func wrapLines(text string, width int) []string {
 	if width <= 0 {
 		width = 80
 	}
-	var result []string
-	for _, line := range strings.Split(text, "\n") {
-		if len(line) <= width {
-			result = append(result, line)
-		} else {
-			for len(line) > width {
-				breakAt := width
-				for i := width; i > width/2; i-- {
-					if line[i] == ' ' {
-						breakAt = i
-						break
-					}
-				}
-				result = append(result, line[:breakAt])
-				line = line[breakAt:]
-				if line != "" && line[0] == ' ' {
-					line = line[1:]
-				}
-			}
-			if line != "" {
-				result = append(result, line)
-			}
-		}
+	lines := strings.Split(text, "\n")
+	result := make([]string, 0, len(lines))
+	for _, line := range lines {
+		result = append(result, wrapLine(line, width)...)
 	}
 	return result
+}
+
+// wrapLine wraps a single logical line at width, breaking on spaces when
+// possible and hard-breaking when a word is longer than width.
+func wrapLine(line string, width int) []string {
+	if len(line) <= width {
+		return []string{line}
+	}
+	var out []string
+	for len(line) > width {
+		breakAt := findBreak(line, width)
+		out = append(out, line[:breakAt])
+		line = line[breakAt:]
+		if line != "" && line[0] == ' ' {
+			line = line[1:]
+		}
+	}
+	if line != "" {
+		out = append(out, line)
+	}
+	return out
+}
+
+// findBreak returns the index to break at: the last space in the second half
+// of the overflowing segment, or width when the segment has no usable space.
+func findBreak(line string, width int) int {
+	for i := width; i > width/2; i-- {
+		if line[i] == ' ' {
+			return i
+		}
+	}
+	return width
 }

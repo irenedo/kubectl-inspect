@@ -6,6 +6,7 @@ import (
 	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/irenedo/kubectl-inspect/pkg/explain"
+	"github.com/mattn/go-runewidth"
 )
 
 // Update handles messages and returns the updated model and any commands.
@@ -418,6 +419,6 @@ func (m Model) helpHeight() int {
 	if w <= 0 {
 		return 1
 	}
-	help := formatHelp()
-	return max((len(help)+w-1)/w, 1)
+	help := plainHelpText()
+	return max((runewidth.StringWidth(help)+w-1)/w, 1)
 }

@@ -178,6 +178,33 @@ func TestWrapLines_ZeroWidth(t *testing.T) {
 	}
 }
 
+func TestWrapLines_MultipleLines(t *testing.T) {
+	result := wrapLines("line one\nline two\n\nline four", 80)
+	want := []string{"line one", "line two", "", "line four"}
+	if len(result) != len(want) {
+		t.Fatalf("expected %d lines, got %d: %v", len(want), len(result), result)
+	}
+	for i, line := range result {
+		if line != want[i] {
+			t.Errorf("line %d: expected %q, got %q", i, want[i], line)
+		}
+	}
+}
+
+func TestWrapLines_NoSpacesHardBreak(t *testing.T) {
+	// A long run with no spaces must be hard-wrapped at exactly `width`.
+	result := wrapLines(strings.Repeat("x", 100), 40)
+	if len(result) != 3 {
+		t.Fatalf("expected 3 segments (40+40+20), got %d: %v", len(result), result)
+	}
+	want := []int{40, 40, 20}
+	for i, line := range result {
+		if len(line) != want[i] {
+			t.Errorf("segment %d: expected %d chars, got %d", i, want[i], len(line))
+		}
+	}
+}
+
 func TestCenterText(t *testing.T) {
 	result := centerText("hello", 20, 5)
 	lines := strings.Split(result, "\n")
